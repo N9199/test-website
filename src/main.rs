@@ -11,11 +11,12 @@ use std::collections::VecDeque;
 
 #[derive(Debug)]
 enum Msg {
-    Clicked(usize, usize),
+    LeftClicked(usize, usize),
+    RightClicked(usize, usize),
 }
 
 #[derive(Clone, PartialEq, Deserialize, Debug)]
-pub enum GameState{
+pub enum GameState {
     InProgess,
     Won,
     Lost,
@@ -65,7 +66,7 @@ pub struct Board {
     pub game_state: GameState,
     start: bool,
     clicked_cells: usize,
-    flagged_mines: usize,
+    flagged_mines: i16,
 }
 
 #[derive(Clone, PartialEq, Deserialize)]
@@ -78,17 +79,29 @@ struct BoardCell {
 impl fmt::Display for BoardCell {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let out = match self.flags() {
-            8 => String::from("?"),
-            4 => String::from("f"),
-            2 => String::from(" "),
-            1 => match self.value() {
+            3 => String::from("?"),
+            2 => String::from("f"),
+            1 => String::from(" "),
+            0 => match self.value() {
                 1..=8 => self.value().to_string(),
                 15 => String::from("m"),
-                0 => String::from("b"),
+                0 => String::from(" "),
                 _ => String::from(" "),
             },
             _ => String::from("e"),
         };
+        write!(f, "{}", out)
+    }
+}
+
+impl fmt::Debug for BoardCell {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let out = format!(
+            "{:?}: ({}, {})",
+            (self.x, self.y),
+            self.value(),
+            self.flags()
+        );
         write!(f, "{}", out)
     }
 }
@@ -100,17 +113,26 @@ impl BoardCell {
     fn value(&self) -> u8 {
         self.cell & ((1 << 4) - 1)
     }
-    fn click(&mut self) -> bool {
-        //ConsoleService::info(format!("{}, {}", self.flags(), self.value()).as_ref());
-        if self.flags() == 2 {
-            self.cell &= !(1 << 5);
-            self.cell |= 1 << 4;
+    fn left_click(&mut self) -> bool {
+        if self.flags() == 1 {
+            self.cell = self.value();
+            ConsoleService::info(format!("{:?}", self).as_ref());
             if self.value() == 0 {
                 return true;
             }
         }
-        //ConsoleService::info(format!("{}, {}", self.flags(), self.value()).as_ref());
         false
+    }
+
+    fn right_click(&mut self) -> i8 {
+        if self.flags() != 0 {
+            self.cell = self.value() + ((self.flags() % 3 + 1) << 4);
+        }
+        match self.flags() {
+            3 => -1,
+            2 => 1,
+            _ => 0,
+        }
     }
 }
 
@@ -121,7 +143,7 @@ impl Board {
                 .map(|x| {
                     (0..m)
                         .map(|y| BoardCell {
-                            cell: (1 << 5),
+                            cell: (1 << 4),
                             x,
                             y,
                         })
@@ -138,66 +160,107 @@ impl Board {
         }
     }
 
-    fn click(&mut self, x: usize, y: usize) {
-        ConsoleService::info(format!("{:?}", self.game_state).as_ref());
-        if self.start == false {
-            //populate board
-            let mut rng = rand::thread_rng();
-            let place = x * self.m + y;
-            let pos: Vec<(usize, usize)> = (0..(self.n * self.m))
-                .collect::<Vec<usize>>()
-                .choose_multiple(&mut rng, self.mines)
-                .map(|a| (*a) + (a >= &place) as usize)
-                .map(|a| (a / self.m, a % self.m))
-                .collect();
-            //ConsoleService::info(format!("{:?}", pos).as_ref());
-            for (x, y) in pos {
-                self.board[x][y].cell |= 15;
-                for (dx, dy) in iproduct!(-1..=1, -1..=1) {
-                    let x1 = x as i32 + dx;
-                    let y1 = y as i32 + dy;
-                    if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
-                        let x1 = x1 as usize;
-                        let y1 = y1 as usize;
-                        if self.board[x1][y1].value() != 15 {
-                            self.board[x1][y1].cell += 1;
-                            //ConsoleService::info(format!("({},{}): {}", x1, y1, self.board[x1][y1].flags()).as_ref(),);
-                        }
+    fn start(&mut self, x: usize, y: usize, flag: bool) {
+        //populate board
+        let mut rng = rand::thread_rng();
+        let place = x * self.m + y;
+        let pos: Vec<(usize, usize)> = (0..(self.n * self.m - 1)) //Counting is hard
+            .collect::<Vec<usize>>()
+            .choose_multiple(&mut rng, self.mines)
+            .map(|a| (*a) + ((a >= &place) && flag) as usize)
+            .map(|a| (a / self.m, a % self.m))
+            .collect();
+        //ConsoleService::info(format!("{:?}", pos).as_ref());
+        for (x, y) in pos {
+            ConsoleService::info(format!("{} {}", x, y).as_ref());
+            self.board[x][y].cell = 15 + (self.board[x][y].flags() << 4);
+            for (dx, dy) in iproduct!(-1..=1, -1..=1) {
+                let x1 = x as i32 + dx;
+                let y1 = y as i32 + dy;
+                if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                    let x1 = x1 as usize;
+                    let y1 = y1 as usize;
+                    if self.board[x1][y1].value() != 15 {
+                        self.board[x1][y1].cell += 1;
+                        //ConsoleService::info(format!("({},{}): {}", x1, y1, self.board[x1][y1].flags()).as_ref(),);
                     }
                 }
             }
-            self.start = true;
+        }
+        self.start = true;
+    }
+
+    fn left_click(&mut self, x: usize, y: usize) {
+        ConsoleService::info(format!("{:?}", self.game_state).as_ref());
+        if self.start == false {
+            self.start(x, y, true);
         }
         let mut q: VecDeque<(usize, usize)> = VecDeque::new();
-        q.push_back((x, y));
-        //Maybe optimize in future
-        while let Some((x, y)) = q.pop_front() {
-            if self.board[x][y].value() == 15{
-                self.board[x][y].click();
-                self.game_state = GameState::Lost;
-                return;
+        if self.board[x][y].flags() == 0 {
+            let mut count = 0;
+            for (dx, dy) in iproduct!(-1..=1, -1..=1) {
+                let x1 = x as i32 + dx;
+                let y1 = y as i32 + dy;
+                if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                    let x1 = x1 as usize;
+                    let y1 = y1 as usize;
+                    if self.board[x1][y1].flags() == 2 {
+                        count += 1;
+                    }
+                }
             }
-            if self.board[x][y].flags() == 2 {
-                self.clicked_cells += 1;
-            }
-            if self.board[x][y].click() {
+            if count == self.board[x][y].value() {
                 for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                     let x1 = x as i32 + dx;
                     let y1 = y as i32 + dy;
                     if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
                         let x1 = x1 as usize;
                         let y1 = y1 as usize;
-                        if self.board[x1][y1].flags() == 2 {
+                        if self.board[x1][y1].flags() == 1 {
                             q.push_back((x1, y1));
                         }
                     }
                 }
             }
         }
-        if self.clicked_cells +self.mines == self.m*self.n{
+        if self.board[x][y].flags() == 1 {
+            q.push_back((x, y));
+        }
+        //Maybe optimize in future
+        while let Some((x, y)) = q.pop_front() {
+            if self.board[x][y].value() == 15 {
+                self.board[x][y].left_click();
+                self.game_state = GameState::Lost;
+                return;
+            }
+            if self.board[x][y].flags() == 1 {
+                self.clicked_cells += 1;
+            }
+            if self.board[x][y].left_click() {
+                for (dx, dy) in iproduct!(-1..=1, -1..=1) {
+                    let x1 = x as i32 + dx;
+                    let y1 = y as i32 + dy;
+                    if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                        let x1 = x1 as usize;
+                        let y1 = y1 as usize;
+                        if self.board[x1][y1].flags() == 1 {
+                            q.push_back((x1, y1));
+                        }
+                    }
+                }
+            }
+        }
+        if self.clicked_cells + self.mines == self.m * self.n {
             self.game_state = GameState::Won;
             return;
         }
+    }
+
+    fn right_click(&mut self, x: usize, y: usize) {
+        if self.start == false {
+            self.start(x, y, false);
+        }
+        self.flagged_mines += self.board[x][y].right_click() as i16;
     }
 }
 
@@ -229,7 +292,8 @@ impl Component for BoardRender {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         ConsoleService::info(format!("{:?}", msg).as_ref());
         match msg {
-            Msg::Clicked(x, y) => self.board.click(x, y),
+            Msg::LeftClicked(x, y) => self.board.left_click(x, y),
+            Msg::RightClicked(x, y) => self.board.right_click(x, y),
         };
         true
     }
@@ -248,9 +312,15 @@ impl Component for BoardRender {
                                 .iter()
                                 .map(|bcell| {
                                     let (x,y) = (bcell.x,bcell.y);
-                                    let cb = self.link.callback(move |_|Msg::Clicked(x,y));
+                                    let cb1 = self.link.callback(move |_|Msg::LeftClicked(x,y));
+                                    let cb2 = self.link.callback(move |_|Msg::RightClicked(x,y));
+                                    let s = match bcell.flags(){
+                                        0 => "cell1",
+                                        1 => "cell0",
+                                        _ => "cell0",
+                                    };
                                     html!{
-                                        <td class={"cell0"} onclick=cb>{format!("{}", bcell)}</td>
+                                        <td class={s} onclick=cb1 oncontextmenu=cb2 id={"noContextMenu"}>{format!("{}", bcell)}</td>
                                     }
                                 })
                                 .collect::<Html>()}

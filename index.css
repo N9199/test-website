@@ -38,16 +38,16 @@ h1 + .subtitle {
   text-align: center;
 }
 
-.board td .cell0{
+.board .cell0{
   background-color: #c0c0c0;
 }
-.board td .cell1{
+.board .cell1{
+  background-color: #c0c0c0a9;
+}
+.board .cell2{
   background-color: #c0c0c0;
 }
-.board td .cell2{
-  background-color: #c0c0c0;
-}
-.board td .cell3{
+.board .cell3{
   background-color: #c0c0c0;
 }
 
