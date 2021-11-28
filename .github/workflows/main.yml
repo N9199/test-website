@@ -58,7 +58,7 @@ jobs:
       - name: Add and Commit
         uses: EndBug/add-and-commit@v7.4.0
         with:
-          add: './dist'
+          add: './dist --force'
           author_name: 'github-actions[bot]'
           author_email: 'github-actions[bot]@users.noreply.github.com'
           message: 'Build'
