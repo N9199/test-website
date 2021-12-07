@@ -3,21 +3,23 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::Deserialize;
 use std::fmt;
-use yew::prelude::*;
 use yew::services::ConsoleService;
 use yew::{html, html::ImplicitClone, Component, ComponentLink, Html, Properties, ShouldRender};
 
+use yew::web_sys::MouseEvent;
+
 use std::collections::VecDeque;
 
-#[derive(Debug)]
-enum Msg {
+#[derive(Debug, PartialEq)]
+pub enum Msg {
     LeftClicked(usize, usize),
     RightClicked(usize, usize),
+    Restart,
 }
 
-#[derive(Clone, PartialEq, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Deserialize, Debug, Copy)]
 pub enum GameState {
-    InProgess,
+    InProgress,
     Won,
     Lost,
 }
@@ -57,7 +59,7 @@ fn main() {
     yew::start_app::<Model>();
 }
 
-#[derive(Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq, Deserialize, Debug)]
 pub struct Board {
     board: Vec<Vec<BoardCell>>,
     pub n: usize,
@@ -134,6 +136,21 @@ impl BoardCell {
             _ => 0,
         }
     }
+
+    fn render(&self, link: &ComponentLink<BoardRender>) -> Html{
+        let (x,y) = (self.x,self.y);
+        let left_click = link.callback(move |_|Msg::LeftClicked(x,y));
+        let right_click = link.callback(move |e: MouseEvent| {e.prevent_default(); Msg::RightClicked(x,y)});
+        let s = match self.flags(){
+            0 => "cell1",
+            4 => "cell1",
+            1 => "cell0",
+            _ => "cell0",
+        };
+        html!{
+            <td class={s} onclick=left_click oncontextmenu=right_click id={"noContextMenu"}>{format!("{}", self)}</td>
+        }
+    }
 }
 
 impl Board {
@@ -153,7 +170,7 @@ impl Board {
             n,
             m,
             mines,
-            game_state: GameState::InProgess,
+            game_state: GameState::InProgress,
             start: false,
             clicked_cells: 0,
             flagged_mines: 0,
@@ -231,6 +248,7 @@ impl Board {
             if self.board[x][y].value() == 15 {
                 self.board[x][y].left_click();
                 self.game_state = GameState::Lost;
+                self.board[x][y].cell = 15 + (4 << 4);
                 return;
             }
             if self.board[x][y].flags() == 1 {
@@ -291,45 +309,60 @@ impl Component for BoardRender {
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         ConsoleService::info(format!("{:?}", msg).as_ref());
-        match msg {
-            Msg::LeftClicked(x, y) => self.board.left_click(x, y),
-            Msg::RightClicked(x, y) => self.board.right_click(x, y),
+
+        match (msg, self.board.game_state) {
+            (Msg::LeftClicked(x, y), GameState::InProgress) => self.board.left_click(x, y),
+            (Msg::RightClicked(x, y), GameState::InProgress) => self.board.right_click(x, y),
+            (Msg::Restart, _) => {
+                self.board = Board::default();
+            }
+            (_, _) => (),
         };
+
+        if self.board.game_state != GameState::InProgress {
+            for x in 0..self.board.n {
+                for y in 0..self.board.m {
+                    if self.board.board[x][y].value() != 15 {
+                        self.board.board[x][y].left_click();
+                    } else if self.board.game_state == GameState::Won {
+                        self.board.board[x][y].cell = 15 + (2 << 4);
+                    } else if self.board.board[x][y].flags() != 4 {
+                        self.board.board[x][y].cell = 15;
+                    }
+                }
+            }
+        }
         true
     }
 
     fn view(&self) -> Html {
+        let restart = self.link.callback(move |_| Msg::Restart);
         html! {
-            <table class={"board"}>
-                <tbody>
-                {self.board
-                    .board
-                    .iter()
-                    .map(|row| {
-                        html! {
-                            <tr>
-                            {row
-                                .iter()
-                                .map(|bcell| {
-                                    let (x,y) = (bcell.x,bcell.y);
-                                    let cb1 = self.link.callback(move |_|Msg::LeftClicked(x,y));
-                                    let cb2 = self.link.callback(move |_|Msg::RightClicked(x,y));
-                                    let s = match bcell.flags(){
-                                        0 => "cell1",
-                                        1 => "cell0",
-                                        _ => "cell0",
-                                    };
-                                    html!{
-                                        <td class={s} onclick=cb1 oncontextmenu=cb2 id={"noContextMenu"}>{format!("{}", bcell)}</td>
-                                    }
-                                })
-                                .collect::<Html>()}
-                            </tr>
-                        }
-                    })
-                    .collect::<Html>()}
-                </tbody>
-            </table>
+            <>
+            <div>
+                <a class={"button"} onclick=restart>{"R"}</a>
+            </div>
+            <div>
+                <table class={"board"}>
+                    <tbody>
+                    {self.board
+                        .board
+                        .iter()
+                        .map(|row| {
+                            html! {
+                                <tr>
+                                {row
+                                    .iter()
+                                    .map(|bcell| bcell.render(&(self.link)))
+                                    .collect::<Html>()}
+                                </tr>
+                            }
+                        })
+                        .collect::<Html>()}
+                    </tbody>
+                </table>
+            </div>
+            </>
         }
     }
 }
