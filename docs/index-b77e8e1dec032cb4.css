@@ -23,11 +23,16 @@ h1 + .subtitle {
   margin-top: -1em;
 }
 
-.board {
-  border-spacing: 0; 
+.button {
+  border-spacing: 0;
+  user-select: none;
+}
+
+.board { 
   border-spacing: 1px;
   border-collapse: collapse; 
   table-layout: fixed;
+  user-select: none;
 }
 .board th {
   padding: .5em; 
