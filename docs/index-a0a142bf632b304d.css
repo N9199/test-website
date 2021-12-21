@@ -28,33 +28,39 @@ h1 + .subtitle {
   user-select: none;
 }
 
-.board { 
+.title_bar {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-between;
+}
+
+.board {
   border-spacing: 1px;
-  border-collapse: collapse; 
+  border-collapse: collapse;
   table-layout: fixed;
   user-select: none;
 }
+
 .board th {
-  padding: .5em; 
+  padding: 0.5em;
 }
+
 .board td {
-  border: 2px outset #ececec; 
-  width: 1em; 
-  height: 1em;
+  border: 2px outset #ececec;
+  width: 30px;
+  height: 30px;
   text-align: center;
 }
 
-.board .cell0{
+.board .cell0 {
   background-color: #c0c0c0;
 }
-.board .cell1{
+.board .cell1 {
   background-color: #c0c0c0a9;
 }
-.board .cell2{
+.board .cell2 {
   background-color: #c0c0c0;
 }
-.board .cell3{
+.board .cell3 {
   background-color: #c0c0c0;
 }
-
-
