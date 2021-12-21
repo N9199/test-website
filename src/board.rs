@@ -4,18 +4,18 @@ use rand::thread_rng;
 use serde::Deserialize;
 use std::fmt;
 use yew::services::ConsoleService;
+use yew::web_sys::MouseEvent;
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
-use yew::web_sys::MouseEvent;
-
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 //use instant::Instant;
 
 #[derive(Debug, PartialEq)]
 pub enum Msg {
-    LeftClicked(usize, usize),
-    RightClicked(usize, usize),
+    Clicked(usize, usize, bool), //(x,y,is_left)
     Restart,
+    Menu,
+    ToggleFlag,
 }
 
 #[derive(Clone, PartialEq, Deserialize, Debug, Copy)]
@@ -69,7 +69,7 @@ impl BoardCell {
     fn value(&self) -> u8 {
         self.cell & ((1 << 4) - 1)
     }
-    fn left_click(&mut self) -> bool {
+    fn click(&mut self) -> bool {
         if self.flags() == 1 {
             self.cell = self.value();
             //ConsoleService::info(format!("{:?}", self).as_ref());
@@ -80,7 +80,7 @@ impl BoardCell {
         false
     }
 
-    fn right_click(&mut self) -> i8 {
+    fn flag(&mut self) -> i8 {
         if self.flags() != 0 {
             self.cell = self.value() + ((self.flags() % 3 + 1) << 4);
         }
@@ -93,10 +93,10 @@ impl BoardCell {
 
     fn render(&self, link: &ComponentLink<BoardRender>) -> Html {
         let (x, y) = (self.x, self.y);
-        let left_click = link.callback(move |_| Msg::LeftClicked(x, y));
+        let left_click = link.callback(move |_| Msg::Clicked(x, y, true));
         let right_click = link.callback(move |e: MouseEvent| {
             e.prevent_default();
-            Msg::RightClicked(x, y)
+            Msg::Clicked(x, y, false)
         });
         let s = match self.flags() {
             0 => "cell1",
@@ -105,7 +105,7 @@ impl BoardCell {
             _ => "cell0",
         };
         html! {
-            <td class={s} onclick=left_click oncontextmenu=right_click id={"noContextMenu"}>{format!("{}", self)}</td>
+            <td class={s} onclick=left_click oncontextmenu=right_click>{format!("{}", self)}</td>
         }
     }
 }
@@ -122,7 +122,8 @@ struct Board {
     flagged_mines: i16,
     //#[serde(skip_deserializing)]
     //start_time: Option<Instant>,
-    display_time: u64,
+    display_time: u16,
+    flag: bool,
 }
 
 impl Board {
@@ -148,19 +149,20 @@ impl Board {
             flagged_mines: 0,
             //start_time: None,
             display_time: 0,
+            flag: false,
         }
     }
 
     fn start(&mut self, x: usize, y: usize, flag: bool) {
         //populate board
         let mut rng = thread_rng();
-        let place = x * self.m + y;
+        let _place = x * self.m + y;
         let mut places = iproduct!(-1..=1, -1..=1)
             .map(|(dx, dy)| (x as i32 + dx, y as i32 + dy))
             .filter(|(x, y)| 0 <= *x && *x < self.n as i32 && 0 <= *y && *y < self.m as i32)
             .map(|(x, y)| (x * self.m as i32 + y) as usize)
             .collect::<Vec<usize>>();
-        places.sort();
+        places.sort_unstable();
         let places = {
             let mut temp: Vec<(usize, usize)> = vec![(0, 0)];
             let (mut start, mut len, mut next) = (self.n * self.m, 0, self.n * self.m);
@@ -185,9 +187,9 @@ impl Board {
         let mut pos = (0..(self.n * self.m - places.iter().fold(0, |acc, (_, x)| acc + x))) //Counting is hard
             .collect::<Vec<usize>>()
             .choose_multiple(&mut rng, self.mines)
-            .map(|a| *a)
+            .copied()
             .collect::<Vec<usize>>();
-        pos.sort();
+        pos.sort_unstable();
         let mut delta = 0;
         let mut i = 0;
         let pos = pos
@@ -226,12 +228,22 @@ impl Board {
         //self.start_time = Some(Instant::now());
     }
 
-    fn left_click(&mut self, x: usize, y: usize) {
-        //ConsoleService::info(format!("{:?}", self.game_state).as_ref());
-        if self.start == false {
+    fn flag(&mut self, x: usize, y: usize) {
+        if self.board[x][y].flags() == 0 {
+            self.click(x, y);
+        }
+        if !self.start {
+            self.start(x, y, false);
+        }
+        self.flagged_mines += self.board[x][y].flag() as i16;
+    }
+
+    fn click(&mut self, x: usize, y: usize) {
+        if !self.start {
             self.start(x, y, true);
         }
         let mut q: VecDeque<(usize, usize)> = VecDeque::new();
+        let mut set: HashSet<(usize, usize)> = HashSet::new();
         if self.board[x][y].flags() == 0 {
             let mut count = 0;
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
@@ -254,6 +266,7 @@ impl Board {
                         let y1 = y1 as usize;
                         if self.board[x1][y1].flags() == 1 {
                             q.push_back((x1, y1));
+                            set.insert((x1, y1));
                         }
                     }
                 }
@@ -261,11 +274,12 @@ impl Board {
         }
         if self.board[x][y].flags() == 1 {
             q.push_back((x, y));
+            set.insert((x,y));
         }
         //Maybe optimize in future
-        while let Some((x, y)) = q.pop_front() {
+        while let Some((x, y)) = q.pop_front() {//BFS
             if self.board[x][y].value() == 15 {
-                self.board[x][y].left_click();
+                self.board[x][y].click();
                 self.game_state = GameState::Lost;
                 self.board[x][y].cell = 15 + (4 << 4);
                 return;
@@ -273,34 +287,28 @@ impl Board {
             if self.board[x][y].flags() == 1 {
                 self.clicked_cells += 1;
             }
-            if self.board[x][y].left_click() {
+            if self.board[x][y].click() {
                 for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                     let x1 = x as i32 + dx;
                     let y1 = y as i32 + dy;
                     if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
                         let x1 = x1 as usize;
                         let y1 = y1 as usize;
-                        if self.board[x1][y1].flags() == 1 {
+                        if self.board[x1][y1].flags() == 1 && !set.contains(&(x1,y1)){
                             q.push_back((x1, y1));
+                            set.insert((x1,y1));
                         }
                     }
                 }
             }
         }
+
         if self.clicked_cells + self.mines == self.m * self.n {
             self.game_state = GameState::Won;
-            return;
         }
     }
 
-    fn right_click(&mut self, x: usize, y: usize) {
-        if self.start == false {
-            self.start(x, y, false);
-        }
-        self.flagged_mines += self.board[x][y].right_click() as i16;
-    }
-
-    fn time(&self) -> u64 {
+    fn time(&self) -> u16 {
         match self.game_state {
             GameState::InProgress => 0, //(self.start_time.unwrap_or(Instant::now())-Instant::now()).as_secs(),
             _ => self.display_time,
@@ -313,7 +321,7 @@ impl Board {
             for x in 0..self.n {
                 for y in 0..self.m {
                     if self.board[x][y].value() != 15 {
-                        self.board[x][y].left_click();
+                        self.board[x][y].click();
                     } else if self.game_state == GameState::Won {
                         self.board[x][y].cell = 15 + (2 << 4);
                     } else if self.board[x][y].flags() != 4 {
@@ -351,14 +359,16 @@ impl Component for BoardRender {
         false
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        //ConsoleService::info(format!("{:?}", msg).as_ref());
+        ConsoleService::info(format!("{:?}", msg).as_ref());
 
         match (msg, self.board.game_state) {
-            (Msg::LeftClicked(x, y), GameState::InProgress) => self.board.left_click(x, y),
-            (Msg::RightClicked(x, y), GameState::InProgress) => self.board.right_click(x, y),
-            (Msg::Restart, _) => {
-                self.board = Board::default();
-            }
+            (Msg::Clicked(x, y, flag), GameState::InProgress) => match flag ^ self.board.flag {
+                true => self.board.click(x, y),
+                false => self.board.flag(x, y),
+            },
+            (Msg::Restart, _) => self.board = Board::default(),
+            (Msg::Menu, _) => (),
+            (Msg::ToggleFlag, _) => self.board.flag ^= true,
             (_, _) => (),
         };
         self.board.update();
@@ -367,12 +377,22 @@ impl Component for BoardRender {
 
     fn view(&self) -> Html {
         let restart = self.link.callback(move |_| Msg::Restart);
+        let menu = self.link.callback(move |_| Msg::Menu);
+        let toggle_flag = self.link.callback(move |_| Msg::ToggleFlag);
         html! {
             <>
-            <div>
-                <a class={"display"}>{format!("{:03}", (self.board.mines as i16 - self.board.flagged_mines).min(999))}</a>
-                <a class={"button"} onclick=restart>{"R"}</a>
-                <a class={"display"}>{format!("{:03}", self.board.time())}</a>
+            <div class={"title_bar"} min-width={format!("{}px",self.board.m*32+2)}>
+                <div>
+                    <span class={"button"} onclick=toggle_flag>{"T"}</span>
+                </div>
+                <div>
+                    <span class={"display"}>{format!("{:03}", (self.board.mines as i16 - self.board.flagged_mines).min(999))}</span>
+                    <span class={"button"} onclick=restart>{"R"}</span>
+                    <span class={"display"}>{format!("{:03}", self.board.time().min(999))}</span>
+                </div>
+                <div>
+                    <span class={"button"} onclick=menu>{"S"}</span>
+                </div>
             </div>
             <div>
                 <table class={"board"}>
