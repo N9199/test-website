@@ -9,9 +9,8 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::Deserialize;
 use yew::services::ConsoleService;
-use yew::virtual_dom::VChild;
 use yew::web_sys::MouseEvent;
-use yew::{html, Component, ComponentLink, Html, Properties, ShouldRender};
+use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
 //use instant::Instant;
 
@@ -148,20 +147,6 @@ impl Board {
             display_time: 0,
             flag: false,
         }
-    }
-
-    fn reset(&mut self){
-        for x in 0..self.rows{
-            for y in 0..self.cols{
-                self.board[x][y].cell = 1<<4;
-            }
-        }
-        self.game_state = GameState::InProgress;
-        self.start = false;
-        self.clicked_cells = 0;
-        self.flagged_mines = 0;
-        self.display_time = 0;
-        self.flag = false;
     }
 
     fn start(&mut self, x: usize, y: usize, flag: bool) {
@@ -366,6 +351,7 @@ pub struct AppRender {
     link: Rc<ComponentLink<Self>>,
     board: Board,
     new_game_menu: Option<Rc<ComponentLink<NewGameMenu>>>,
+    new_game_menu_visible: bool,
 }
 
 impl Component for AppRender {
@@ -377,6 +363,7 @@ impl Component for AppRender {
             link: Rc::new(link),
             board: Board::default(),
             new_game_menu: None,
+            new_game_menu_visible: false,
         }
     }
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
@@ -387,22 +374,26 @@ impl Component for AppRender {
 
         match (msg, self.board.game_state) {
             (AppRenderMsg::Clicked(x, y, flag), GameState::InProgress) => {
-                match flag ^ self.board.flag {
-                    true => self.board.click(x, y),
-                    false => self.board.flag(x, y),
+                if !self.new_game_menu_visible {
+                    match flag ^ self.board.flag {
+                        true => self.board.click(x, y),
+                        false => self.board.flag(x, y),
+                    }
                 }
             }
-            (AppRenderMsg::Restart, _) => self.board.reset(),
-            (AppRenderMsg::Menu, _) => {
+            (AppRenderMsg::Restart, _) => {
                 if let Some(menu) = &self.new_game_menu {
                     let toggle_menu = menu.callback(|_| NewGameMenuMsg::ToggleVisibility);
                     toggle_menu.emit("");
                 }
+                self.new_game_menu_visible = true;
             }
+            (AppRenderMsg::Menu, _) => (),
             (AppRenderMsg::ToggleFlag, _) => self.board.flag ^= true,
             (AppRenderMsg::MenuLink(link), _) => self.new_game_menu = Some(link),
             (AppRenderMsg::Difficulty(rows, cols, mines), _) => {
-                self.board = Board::new(rows, cols, mines)
+                self.board = Board::new(rows, cols, mines);
+                self.new_game_menu_visible = false;
             }
             (_, _) => (),
         };
@@ -422,9 +413,9 @@ impl Component for AppRender {
                         <span class={"button"} onclick=toggle_flag>{"T"}</span>
                     </div>
                     <div class={"item"}>
-                        <Display number = self.board.mines as i16 - self.board.flagged_mines/>
+                        {display(self.board.mines as i16 - self.board.flagged_mines)}
                         <span class={"button"} onclick=restart>{"R"}</span>
-                        <Display number = self.board.display_time as i16/>
+                        {display(self.board.display_time as i16)}
                     </div>
                     <div class={"item"}>
                         <span class={"button"} onclick=menu>{"S"}</span>
@@ -457,30 +448,8 @@ impl Component for AppRender {
     }
 }
 
-#[derive(PartialEq, Clone, Properties)]
-pub struct DisplayProps {
-    number: i16,
-}
-
-pub struct Display {
-    props: DisplayProps,
-}
-
-impl Component for Display {
-    type Message = ();
-    type Properties = DisplayProps;
-    fn create(props: Self::Properties, _link: ComponentLink<Self>) -> Self {
-        Self { props }
-    }
-    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
-        true
-    }
-    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        true
-    }
-    fn view(&self) -> Html {
-        html! {
-            <span class={"display"}>{format!("{:03}", self.props.number.min(999).max(-99))}</span>
-        }
+fn display(number: i16)->Html{
+    html! {
+        <span class={"display"}>{format!("{:03}", number.min(999).max(-99))}</span>
     }
 }
