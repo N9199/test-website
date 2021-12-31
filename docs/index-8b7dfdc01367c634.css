@@ -1,10 +1,6 @@
-html,
 body {
   height: 100%;
   margin: 0;
-}
-
-body {
   align-items: center;
   display: flex;
   flex-direction: column;
@@ -24,14 +20,24 @@ h1 + .subtitle {
 }
 
 .button {
-  border-spacing: 0;
+  border-spacing: 1px;
   user-select: none;
+  border: 2px outset #ececec;
+  background-color: #c0c0c0;
 }
 
 .title_bar {
   display: flex;
-  flex: 0 0 auto;
   justify-content: space-between;
+}
+
+.title_bar .item{
+  flex: 0 0 auto;
+}
+
+.display {
+  color: #42f551;
+  background-color: black;
 }
 
 .board {
@@ -63,4 +69,25 @@ h1 + .subtitle {
 }
 .board .cell3 {
   background-color: #c0c0c0;
+}
+
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  font-size: small;
+  position: absolute;
+  top: 20%;
+  border: 3px outset #ececec;
+  background-color: #c0c0c0;
+  min-width: 170px;
+  padding: 5px;
+}
+
+.menu .item{
+  position: relative;
+  border: 3px inset #ececec;
+  padding-left: 15px;
+  padding-right: 15px;
 }
