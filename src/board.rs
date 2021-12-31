@@ -1,22 +1,19 @@
+use crate::new_game_menu::{NewGameMenu, NewGameMenuMsg};
+
+use std::collections::{HashSet, VecDeque};
+use std::fmt;
+use std::rc::Rc;
+
 use itertools::iproduct;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::Deserialize;
-use std::fmt;
 use yew::services::ConsoleService;
+use yew::virtual_dom::VChild;
 use yew::web_sys::MouseEvent;
-use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use yew::{html, Component, ComponentLink, Html, Properties, ShouldRender};
 
-use std::collections::{VecDeque, HashSet};
 //use instant::Instant;
-
-#[derive(Debug, PartialEq)]
-pub enum Msg {
-    Clicked(usize, usize, bool), //(x,y,is_left)
-    Restart,
-    Menu,
-    ToggleFlag,
-}
 
 #[derive(Clone, PartialEq, Deserialize, Debug, Copy)]
 enum GameState {
@@ -91,12 +88,12 @@ impl BoardCell {
         }
     }
 
-    fn render(&self, link: &ComponentLink<BoardRender>) -> Html {
+    fn render(&self, link: &ComponentLink<AppRender>) -> Html {
         let (x, y) = (self.x, self.y);
-        let left_click = link.callback(move |_| Msg::Clicked(x, y, true));
+        let left_click = link.callback(move |_| AppRenderMsg::Clicked(x, y, true));
         let right_click = link.callback(move |e: MouseEvent| {
             e.prevent_default();
-            Msg::Clicked(x, y, false)
+            AppRenderMsg::Clicked(x, y, false)
         });
         let s = match self.flags() {
             0 => "cell1",
@@ -113,8 +110,8 @@ impl BoardCell {
 #[derive(Clone, PartialEq, Deserialize, Debug)]
 struct Board {
     board: Vec<Vec<BoardCell>>,
-    pub n: usize,
-    pub m: usize,
+    pub rows: usize,
+    pub cols: usize,
     pub mines: usize,
     pub game_state: GameState,
     start: bool,
@@ -127,11 +124,11 @@ struct Board {
 }
 
 impl Board {
-    fn new(n: usize, m: usize, mines: usize) -> Self {
+    fn new(rows: usize, cols: usize, mines: usize) -> Self {
         Board {
-            board: (0..n)
+            board: (0..rows)
                 .map(|x| {
-                    (0..m)
+                    (0..cols)
                         .map(|y| BoardCell {
                             cell: (1 << 4),
                             x,
@@ -140,8 +137,8 @@ impl Board {
                         .collect()
                 })
                 .collect(),
-            n,
-            m,
+            rows,
+            cols,
             mines,
             game_state: GameState::InProgress,
             start: false,
@@ -153,25 +150,39 @@ impl Board {
         }
     }
 
+    fn reset(&mut self){
+        for x in 0..self.rows{
+            for y in 0..self.cols{
+                self.board[x][y].cell = 1<<4;
+            }
+        }
+        self.game_state = GameState::InProgress;
+        self.start = false;
+        self.clicked_cells = 0;
+        self.flagged_mines = 0;
+        self.display_time = 0;
+        self.flag = false;
+    }
+
     fn start(&mut self, x: usize, y: usize, flag: bool) {
         //populate board
         let mut rng = thread_rng();
-        let _place = x * self.m + y;
+        let _place = x * self.cols + y;
         let mut places = iproduct!(-1..=1, -1..=1)
             .map(|(dx, dy)| (x as i32 + dx, y as i32 + dy))
-            .filter(|(x, y)| 0 <= *x && *x < self.n as i32 && 0 <= *y && *y < self.m as i32)
-            .map(|(x, y)| (x * self.m as i32 + y) as usize)
+            .filter(|(x, y)| 0 <= *x && *x < self.rows as i32 && 0 <= *y && *y < self.cols as i32)
+            .map(|(x, y)| (x * self.cols as i32 + y) as usize)
             .collect::<Vec<usize>>();
         places.sort_unstable();
         let places = {
             let mut temp: Vec<(usize, usize)> = vec![(0, 0)];
-            let (mut start, mut len, mut next) = (self.n * self.m, 0, self.n * self.m);
+            let (mut start, mut len, mut next) = (self.rows * self.cols, 0, self.rows * self.cols);
             for e in places {
                 if e == next {
                     len += 1;
                     next += 1;
                 } else {
-                    if start != self.n * self.m {
+                    if start != self.rows * self.cols {
                         temp.push((start, len));
                     }
                     start = e;
@@ -180,11 +191,11 @@ impl Board {
                 }
             }
             temp.push((start, len));
-            temp.push((self.m * self.n, 0));
+            temp.push((self.cols * self.rows, 0));
             temp
         };
         //ConsoleService::info(format!("{:?}", places).as_ref());
-        let mut pos = (0..(self.n * self.m - places.iter().fold(0, |acc, (_, x)| acc + x))) //Counting is hard
+        let mut pos = (0..(self.rows * self.cols - places.iter().fold(0, |acc, (_, x)| acc + x))) //Counting is hard
             .collect::<Vec<usize>>()
             .choose_multiple(&mut rng, self.mines)
             .copied()
@@ -204,7 +215,7 @@ impl Board {
             })
             .map(|a| {
                 //ConsoleService::info(format!("a:{} x:{}", a, a/self.m).as_ref());
-                (a / self.m, a % self.m)
+                (a / self.cols, a % self.cols)
             })
             .collect::<Vec<(usize, usize)>>();
         //ConsoleService::info(format!("self.m:{}", self.m).as_ref());
@@ -214,7 +225,7 @@ impl Board {
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                 let x1 = x as i32 + dx;
                 let y1 = y as i32 + dy;
-                if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                     let x1 = x1 as usize;
                     let y1 = y1 as usize;
                     if self.board[x1][y1].value() != 15 {
@@ -242,14 +253,14 @@ impl Board {
         if !self.start {
             self.start(x, y, true);
         }
-        let mut q: VecDeque<(usize, usize)> = VecDeque::new();
-        let mut set: HashSet<(usize, usize)> = HashSet::new();
+        let mut q = VecDeque::new();
+        let mut set = HashSet::new();
         if self.board[x][y].flags() == 0 {
             let mut count = 0;
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                 let x1 = x as i32 + dx;
                 let y1 = y as i32 + dy;
-                if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                     let x1 = x1 as usize;
                     let y1 = y1 as usize;
                     if self.board[x1][y1].flags() == 2 {
@@ -261,7 +272,7 @@ impl Board {
                 for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                     let x1 = x as i32 + dx;
                     let y1 = y as i32 + dy;
-                    if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                    if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                         let x1 = x1 as usize;
                         let y1 = y1 as usize;
                         if self.board[x1][y1].flags() == 1 {
@@ -274,10 +285,11 @@ impl Board {
         }
         if self.board[x][y].flags() == 1 {
             q.push_back((x, y));
-            set.insert((x,y));
+            set.insert((x, y));
         }
         //Maybe optimize in future
-        while let Some((x, y)) = q.pop_front() {//BFS
+        while let Some((x, y)) = q.pop_front() {
+            //BFS
             if self.board[x][y].value() == 15 {
                 self.board[x][y].click();
                 self.game_state = GameState::Lost;
@@ -291,19 +303,19 @@ impl Board {
                 for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                     let x1 = x as i32 + dx;
                     let y1 = y as i32 + dy;
-                    if 0 <= x1 && x1 < self.n as i32 && 0 <= y1 && y1 < self.m as i32 {
+                    if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                         let x1 = x1 as usize;
                         let y1 = y1 as usize;
-                        if self.board[x1][y1].flags() == 1 && !set.contains(&(x1,y1)){
+                        if self.board[x1][y1].flags() == 1 && !set.contains(&(x1, y1)) {
                             q.push_back((x1, y1));
-                            set.insert((x1,y1));
+                            set.insert((x1, y1));
                         }
                     }
                 }
             }
         }
 
-        if self.clicked_cells + self.mines == self.m * self.n {
+        if self.clicked_cells + self.mines == self.cols * self.rows {
             self.game_state = GameState::Won;
         }
     }
@@ -318,8 +330,8 @@ impl Board {
     fn update(&mut self) {
         self.display_time = self.time();
         if self.game_state != GameState::InProgress {
-            for x in 0..self.n {
-                for y in 0..self.m {
+            for x in 0..self.rows {
+                for y in 0..self.cols {
                     if self.board[x][y].value() != 15 {
                         self.board[x][y].click();
                     } else if self.game_state == GameState::Won {
@@ -339,36 +351,59 @@ impl Default for Board {
     }
 }
 
-#[derive(Clone)]
-pub struct BoardRender {
-    link: ComponentLink<Self>,
-    board: Board,
+#[derive(Debug)]
+pub enum AppRenderMsg {
+    Clicked(usize, usize, bool),     //(x,y,is_left)
+    Difficulty(usize, usize, usize), //cols, rows, mines
+    Restart,
+    Menu,
+    ToggleFlag,
+    MenuLink(Rc<ComponentLink<NewGameMenu>>),
 }
 
-impl Component for BoardRender {
-    type Message = Msg;
+#[derive(Clone)]
+pub struct AppRender {
+    link: Rc<ComponentLink<Self>>,
+    board: Board,
+    new_game_menu: Option<Rc<ComponentLink<NewGameMenu>>>,
+}
+
+impl Component for AppRender {
+    type Message = AppRenderMsg;
     type Properties = ();
 
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
         Self {
-            link,
+            link: Rc::new(link),
             board: Board::default(),
+            new_game_menu: None,
         }
     }
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        false
+        true
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         ConsoleService::info(format!("{:?}", msg).as_ref());
 
         match (msg, self.board.game_state) {
-            (Msg::Clicked(x, y, flag), GameState::InProgress) => match flag ^ self.board.flag {
-                true => self.board.click(x, y),
-                false => self.board.flag(x, y),
-            },
-            (Msg::Restart, _) => self.board = Board::default(),
-            (Msg::Menu, _) => (),
-            (Msg::ToggleFlag, _) => self.board.flag ^= true,
+            (AppRenderMsg::Clicked(x, y, flag), GameState::InProgress) => {
+                match flag ^ self.board.flag {
+                    true => self.board.click(x, y),
+                    false => self.board.flag(x, y),
+                }
+            }
+            (AppRenderMsg::Restart, _) => self.board.reset(),
+            (AppRenderMsg::Menu, _) => {
+                if let Some(menu) = &self.new_game_menu {
+                    let toggle_menu = menu.callback(|_| NewGameMenuMsg::ToggleVisibility);
+                    toggle_menu.emit("");
+                }
+            }
+            (AppRenderMsg::ToggleFlag, _) => self.board.flag ^= true,
+            (AppRenderMsg::MenuLink(link), _) => self.new_game_menu = Some(link),
+            (AppRenderMsg::Difficulty(rows, cols, mines), _) => {
+                self.board = Board::new(rows, cols, mines)
+            }
             (_, _) => (),
         };
         self.board.update();
@@ -376,45 +411,76 @@ impl Component for BoardRender {
     }
 
     fn view(&self) -> Html {
-        let restart = self.link.callback(move |_| Msg::Restart);
-        let menu = self.link.callback(move |_| Msg::Menu);
-        let toggle_flag = self.link.callback(move |_| Msg::ToggleFlag);
+        let restart = self.link.callback(move |_| AppRenderMsg::Restart);
+        let toggle_flag = self.link.callback(move |_| AppRenderMsg::ToggleFlag);
+        let menu = self.link.callback(move |_| AppRenderMsg::Menu);
         html! {
             <>
-            <div class={"title_bar"} min-width={format!("{}px",self.board.m*32+2)}>
-                <div>
-                    <span class={"button"} onclick=toggle_flag>{"T"}</span>
+            <div style={"position: absolute; top: 30%"}>
+                <div class={"title_bar"} style={format!("min-width: {}px",self.board.cols*32+2)}>
+                    <div class={"item"}>
+                        <span class={"button"} onclick=toggle_flag>{"T"}</span>
+                    </div>
+                    <div class={"item"}>
+                        <Display number = self.board.mines as i16 - self.board.flagged_mines/>
+                        <span class={"button"} onclick=restart>{"R"}</span>
+                        <Display number = self.board.display_time as i16/>
+                    </div>
+                    <div class={"item"}>
+                        <span class={"button"} onclick=menu>{"S"}</span>
+                    </div>
                 </div>
                 <div>
-                    <span class={"display"}>{format!("{:03}", (self.board.mines as i16 - self.board.flagged_mines).min(999))}</span>
-                    <span class={"button"} onclick=restart>{"R"}</span>
-                    <span class={"display"}>{format!("{:03}", self.board.time().min(999))}</span>
-                </div>
-                <div>
-                    <span class={"button"} onclick=menu>{"S"}</span>
+                    <table class={"board"}>
+                        <tbody>
+                        {self.board
+                            .board
+                            .iter()
+                            .map(|row| {
+                                html! {
+                                    <tr>
+                                    {row
+                                        .iter()
+                                        .map(|cell| cell.render(&(self.link)))
+                                        .collect::<Html>()}
+                                    </tr>
+                                }
+                            })
+                            .collect::<Html>()}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div>
-                <table class={"board"}>
-                    <tbody>
-                    {self.board
-                        .board
-                        .iter()
-                        .map(|row| {
-                            html! {
-                                <tr>
-                                {row
-                                    .iter()
-                                    .map(|cell| cell.render(&(self.link)))
-                                    .collect::<Html>()}
-                                </tr>
-                            }
-                        })
-                        .collect::<Html>()}
-                    </tbody>
-                </table>
-            </div>
+            <NewGameMenu par_link=self.link.clone()/>
             </>
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Properties)]
+pub struct DisplayProps {
+    number: i16,
+}
+
+pub struct Display {
+    props: DisplayProps,
+}
+
+impl Component for Display {
+    type Message = ();
+    type Properties = DisplayProps;
+    fn create(props: Self::Properties, _link: ComponentLink<Self>) -> Self {
+        Self { props }
+    }
+    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
+        true
+    }
+    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
+        true
+    }
+    fn view(&self) -> Html {
+        html! {
+            <span class={"display"}>{format!("{:03}", self.props.number.min(999).max(-99))}</span>
         }
     }
 }
