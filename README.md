@@ -1,5 +1,5 @@
 # Test Minesweeper
-
+Fonts are taken from the internet, each being available for personal and commercial use.
 # Stuff
 - [ ] Finish GUI design
   - [ ] Finish new game menu

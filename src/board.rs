@@ -3,25 +3,25 @@ use crate::new_game_menu::{NewGameMenu, NewGameMenuMsg};
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::rc::Rc;
+use std::time::Duration;
 
 use itertools::iproduct;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serde::Deserialize;
-use yew::services::ConsoleService;
-use yew::web_sys::MouseEvent;
-use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use yew::services::interval::{IntervalService, IntervalTask};
+use yew::services::{ConsoleService, Task};
+use yew::{html, Component, ComponentLink, Event, Html, MouseEvent, ShouldRender, TouchEvent};
 
-//use instant::Instant;
+use wasm_timer::Instant;
 
-#[derive(Clone, PartialEq, Deserialize, Debug, Copy)]
+#[derive(Clone, PartialEq, Debug, Copy)]
 enum GameState {
     InProgress,
     Won,
     Lost,
 }
 
-#[derive(Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq)]
 struct BoardCell {
     pub cell: u8,
     x: usize,
@@ -94,6 +94,15 @@ impl BoardCell {
             e.prevent_default();
             AppRenderMsg::Clicked(x, y, false)
         });
+        let tap_start = link.callback(move |_| AppRenderMsg::TapStart(x, y));
+        let tap_end = link.callback(move |e: TouchEvent| {
+            e.prevent_default();
+            AppRenderMsg::TapEnd(x, y)
+        });
+        let prevent_select = link.callback( |e: Event| {
+            e.prevent_default();
+            AppRenderMsg::Nothing
+        });
         let s = match self.flags() {
             0 => "cell1",
             4 => "cell1",
@@ -101,12 +110,12 @@ impl BoardCell {
             _ => "cell0",
         };
         html! {
-            <td class={s} onclick=left_click oncontextmenu=right_click>{format!("{}", self)}</td>
+            <td class={s} onclick=left_click oncontextmenu=right_click ontouchstart=tap_start ontouchend=tap_end onselectstart=prevent_select.clone() onselect=prevent_select.clone()>{format!("{}", self)}</td>
         }
     }
 }
 
-#[derive(Clone, PartialEq, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 struct Board {
     board: Vec<Vec<BoardCell>>,
     pub rows: usize,
@@ -116,8 +125,7 @@ struct Board {
     start: bool,
     clicked_cells: usize,
     flagged_mines: i16,
-    //#[serde(skip_deserializing)]
-    //start_time: Option<Instant>,
+    start_time: Option<Instant>,
     display_time: u16,
     flag: bool,
 }
@@ -143,7 +151,7 @@ impl Board {
             start: false,
             clicked_cells: 0,
             flagged_mines: 0,
-            //start_time: None,
+            start_time: None,
             display_time: 0,
             flag: false,
         }
@@ -151,8 +159,10 @@ impl Board {
 
     fn start(&mut self, x: usize, y: usize, flag: bool) {
         //populate board
+        ConsoleService::debug("Fill Board");
         let mut rng = thread_rng();
         let _place = x * self.cols + y;
+        ConsoleService::debug("Create Mines");
         let mut places = iproduct!(-1..=1, -1..=1)
             .map(|(dx, dy)| (x as i32 + dx, y as i32 + dy))
             .filter(|(x, y)| 0 <= *x && *x < self.rows as i32 && 0 <= *y && *y < self.cols as i32)
@@ -205,6 +215,7 @@ impl Board {
             .collect::<Vec<(usize, usize)>>();
         //ConsoleService::info(format!("self.m:{}", self.m).as_ref());
         //ConsoleService::info(format!("pos:{:?}", pos).as_ref());
+        ConsoleService::debug("Place Mines");
         for (x, y) in pos {
             self.board[x][y].cell = 15 + (self.board[x][y].flags() << 4);
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
@@ -221,7 +232,8 @@ impl Board {
             }
         }
         self.start = true;
-        //self.start_time = Some(Instant::now());
+        self.start_time = Some(Instant::now());
+        ConsoleService::debug("Finish Board Filling");
     }
 
     fn flag(&mut self, x: usize, y: usize) {
@@ -235,11 +247,13 @@ impl Board {
     }
 
     fn click(&mut self, x: usize, y: usize) {
+        ConsoleService::debug("Clicked");
         if !self.start {
             self.start(x, y, true);
         }
         let mut q = VecDeque::new();
         let mut set = HashSet::new();
+        ConsoleService::debug("Check if flagged");
         if self.board[x][y].flags() == 0 {
             let mut count = 0;
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
@@ -268,10 +282,12 @@ impl Board {
                 }
             }
         }
+        ConsoleService::debug("Check if clickable");
         if self.board[x][y].flags() == 1 {
             q.push_back((x, y));
             set.insert((x, y));
         }
+        ConsoleService::debug("Check all discovered values");
         //Maybe optimize in future
         while let Some((x, y)) = q.pop_front() {
             //BFS
@@ -299,15 +315,22 @@ impl Board {
                 }
             }
         }
-
+        ConsoleService::debug("Check if game is won");
         if self.clicked_cells + self.mines == self.cols * self.rows {
             self.game_state = GameState::Won;
         }
+        ConsoleService::debug("Finish Click");
     }
 
     fn time(&self) -> u16 {
         match self.game_state {
-            GameState::InProgress => 0, //(self.start_time.unwrap_or(Instant::now())-Instant::now()).as_secs(),
+            GameState::InProgress => (match self.start_time {
+                Some(start_time) => Instant::now() - start_time,
+                None => Duration::ZERO,
+            })
+            .as_secs()
+            .try_into()
+            .unwrap_or_default(),
             _ => self.display_time,
         }
     }
@@ -340,18 +363,23 @@ impl Default for Board {
 pub enum AppRenderMsg {
     Clicked(usize, usize, bool),     //(x,y,is_left)
     Difficulty(usize, usize, usize), //cols, rows, mines
-    Restart,
+    NewGame,
     Menu,
     ToggleFlag,
     MenuLink(Rc<ComponentLink<NewGameMenu>>),
+    UpdateTime,
+    TapStart(usize, usize),
+    TapEnd(usize, usize),
+    Nothing,
 }
 
-#[derive(Clone)]
 pub struct AppRender {
     link: Rc<ComponentLink<Self>>,
     board: Board,
     new_game_menu: Option<Rc<ComponentLink<NewGameMenu>>>,
     new_game_menu_visible: bool,
+    last_tap: (usize, usize, Option<Instant>),
+    _clock_updater: IntervalTask,
 }
 
 impl Component for AppRender {
@@ -359,97 +387,133 @@ impl Component for AppRender {
     type Properties = ();
 
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        let clock_handle = IntervalService::spawn(
+            Duration::from_millis(500),
+            link.callback(|_| AppRenderMsg::UpdateTime),
+        );
         Self {
             link: Rc::new(link),
             board: Board::default(),
             new_game_menu: None,
             new_game_menu_visible: false,
+            last_tap: (0, 0, None),
+            _clock_updater: clock_handle,
         }
     }
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
         true
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        ConsoleService::info(format!("{:?}", msg).as_ref());
+        let debug_msg = format!("{:?}", msg);
+        let time = if let Some(start_time) = self.board.start_time {
+            Instant::now() - start_time
+        } else {
+            Duration::ZERO
+        };
+        ConsoleService::debug(format!("Starting: {} ({})", debug_msg, time.as_millis()).as_ref());
 
-        match (msg, self.board.game_state) {
-            (AppRenderMsg::Clicked(x, y, flag), GameState::InProgress) => {
-                if !self.new_game_menu_visible {
-                    match flag ^ self.board.flag {
-                        true => self.board.click(x, y),
-                        false => self.board.flag(x, y),
-                    }
+        match (msg, self.board.game_state, self.new_game_menu_visible) {
+            (AppRenderMsg::Clicked(x, y, flag), GameState::InProgress, false) => {
+                match flag ^ self.board.flag {
+                    true => self.board.click(x, y),
+                    false => self.board.flag(x, y),
                 }
             }
-            (AppRenderMsg::Restart, _) => {
+            (AppRenderMsg::NewGame, _, _) => {
                 if let Some(menu) = &self.new_game_menu {
                     let toggle_menu = menu.callback(|_| NewGameMenuMsg::ToggleVisibility);
                     toggle_menu.emit("");
                 }
                 self.new_game_menu_visible = true;
             }
-            (AppRenderMsg::Menu, _) => (),
-            (AppRenderMsg::ToggleFlag, _) => self.board.flag ^= true,
-            (AppRenderMsg::MenuLink(link), _) => self.new_game_menu = Some(link),
-            (AppRenderMsg::Difficulty(rows, cols, mines), _) => {
+            (AppRenderMsg::Menu, _, _) => (),
+            (AppRenderMsg::ToggleFlag, _, false) => self.board.flag ^= true,
+            (AppRenderMsg::MenuLink(link), _, _) => self.new_game_menu = Some(link),
+            (AppRenderMsg::Difficulty(rows, cols, mines), _, true) => {
                 self.board = Board::new(rows, cols, mines);
                 self.new_game_menu_visible = false;
             }
-            (_, _) => (),
+            (AppRenderMsg::TapStart(x, y), GameState::InProgress, false) => {
+                self.last_tap = (x, y, Some(Instant::now()));
+            }
+            (AppRenderMsg::TapEnd(x, y), GameState::InProgress, false) => {
+                if let Some(last_time) = self.last_tap.2 {
+                    let time = (Instant::now() - last_time).as_millis();
+                    if x == self.last_tap.0 && y == self.last_tap.1 {
+                        let flag = time < 400; //Fiddle with value
+                        match flag ^ self.board.flag {
+                            true => self.board.click(x, y),
+                            false => self.board.flag(x, y),
+                        }
+                    }
+                }
+            }
+            (_, _, _) => (),
         };
         self.board.update();
+        ConsoleService::debug(format!("Finished: {} ({})", debug_msg, time.as_millis()).as_ref());
         true
     }
 
     fn view(&self) -> Html {
-        let restart = self.link.callback(move |_| AppRenderMsg::Restart);
+        let restart = self.link.callback(move |_| AppRenderMsg::NewGame);
         let toggle_flag = self.link.callback(move |_| AppRenderMsg::ToggleFlag);
         let menu = self.link.callback(move |_| AppRenderMsg::Menu);
+        let restart_button = match self.board.game_state {
+            GameState::InProgress => "R",
+            GameState::Won => ":)",
+            GameState::Lost => ":(",
+        };
         html! {
             <>
-            <div style={"position: absolute; top: 30%"}>
+            <div style={"position: absolute; top: 10%"}>
                 <div class={"title_bar"} style={format!("min-width: {}px",self.board.cols*32+2)}>
                     <div class={"item"}>
-                        <span class={"button"} onclick=toggle_flag>{"T"}</span>
+                        <div class={"button"} onclick=toggle_flag>{"T"}</div>
                     </div>
-                    <div class={"item"}>
+                    <div class={"item"} style={"display: flex; flex-direction: row;"}>
                         {display(self.board.mines as i16 - self.board.flagged_mines)}
-                        <span class={"button"} onclick=restart>{"R"}</span>
-                        {display(self.board.display_time as i16)}
+                        <div class={"button"} onclick=restart>{restart_button}</div>
+                        {display(self.board.time() as i16)}
                     </div>
                     <div class={"item"}>
-                        <span class={"button"} onclick=menu>{"S"}</span>
+                        <div class={"button"} onclick=menu>{"S"}</div>
                     </div>
                 </div>
                 <div>
                     <table class={"board"}>
                         <tbody>
-                        {self.board
-                            .board
-                            .iter()
-                            .map(|row| {
-                                html! {
-                                    <tr>
-                                    {row
-                                        .iter()
-                                        .map(|cell| cell.render(&(self.link)))
-                                        .collect::<Html>()}
-                                    </tr>
-                                }
-                            })
-                            .collect::<Html>()}
+                        {board_display(&self.board.board, &self.link)}
                         </tbody>
                     </table>
                 </div>
             </div>
-            <NewGameMenu par_link=self.link.clone()/>
+            <NewGameMenu par_link=Rc::downgrade(&self.link)/>
             </>
         }
     }
 }
 
-fn display(number: i16)->Html{
+fn display(number: i16) -> Html {
     html! {
-        <span class={"display"}>{format!("{:03}", number.min(999).max(-99))}</span>
+        <div class={"display"}>{format!("{:03}", number.min(999).max(-99))}</div>
+    }
+}
+
+fn board_display(board: &Vec<Vec<BoardCell>>, link: &ComponentLink<AppRender>) -> Html {
+    html! {
+       board
+            .iter()
+            .map(|row| {
+                html! {
+                    <tr>
+                    {row
+                        .iter()
+                        .map(|cell| cell.render(link))
+                        .collect::<Html>()}
+                    </tr>
+                }
+            })
+            .collect::<Html>()
     }
 }

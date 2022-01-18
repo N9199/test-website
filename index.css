@@ -1,3 +1,19 @@
+@font-face {
+  font-family: 'default-font2';
+  src: url('/fonts/press-start-2p/PressStart2P-vaV7.ttf') format('truetype'),
+  url('/fonts/press-start-2p/PressStart2P-vaV7.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'default-font';
+  src: url('/fonts/MozartNbp-93Ey.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'display-font';
+  src: url('/fonts/alarm-clock/alarm\ clock.ttf') format('truetype')
+}
+
 body {
   height: 100%;
   margin: 0;
@@ -5,7 +21,16 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  font-size: 1.5rem;
+  font-family: 'default-font';
+  font-size: 2em;
+
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  -khtml-user-select:none;
+  -moz-user-select:none;
+  -ms-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:rgba(0,0,0,0);
 }
 
 main {
@@ -24,7 +49,11 @@ h1 + .subtitle {
   user-select: none;
   border: 2px outset #ececec;
   background-color: #c0c0c0;
+  margin: 5px;
+  text-align: center;
+  min-width: 25px;
 }
+
 
 .title_bar {
   display: flex;
@@ -38,6 +67,12 @@ h1 + .subtitle {
 .display {
   color: #42f551;
   background-color: black;
+  font-family: 'display-font';
+  font-size: 1.5rem;
+  border-spacing: 1px;
+  min-width: 50px;
+  margin: 5px;
+  text-align: center;
 }
 
 .board {
@@ -60,6 +95,7 @@ h1 + .subtitle {
 
 .board .cell0 {
   background-color: #c0c0c0;
+
 }
 .board .cell1 {
   background-color: #c0c0c0a9;
@@ -78,7 +114,7 @@ h1 + .subtitle {
   justify-content: space-around;
   font-size: small;
   position: absolute;
-  top: 20%;
+  top: 10%;
   border: 3px outset #ececec;
   background-color: #c0c0c0;
   min-width: 170px;
@@ -90,4 +126,9 @@ h1 + .subtitle {
   border: 3px inset #ececec;
   padding-left: 15px;
   padding-right: 15px;
+}
+
+input[type="range"] {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
 }
