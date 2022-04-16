@@ -1,11 +1,12 @@
 use crate::board::{BoardCell, BoardCellState};
 use arrayvec::ArrayVec;
-use itertools::zip;
+use gloo_console::info;
 use lazy_static::lazy_static;
 use nalgebra::{ArrayStorage, Matrix, Matrix2};
-use yew::services::ConsoleService;
+
 use std::{
     collections::HashSet,
+    iter::zip,
     sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc::channel,
@@ -38,12 +39,12 @@ impl Solver {
         rayon::spawn({
             let board = self.board.clone();
             move || {
-                ConsoleService::info("Start of Main Solver Thread");
+                info!("Start of Main Solver Thread");
                 let (sender, receiver) = channel();
                 let live_solvers = Arc::new(AtomicUsize::new(0));
                 loop {
-                    ConsoleService::info("Main Solver Thread: Loop beginning");
-                    if Arc::strong_count(&board) == 1{
+                    info!("Main Solver Thread: Loop beginning");
+                    if Arc::strong_count(&board) == 1 {
                         return;
                     }
                     if live_solvers.load(Ordering::Relaxed) == 0 {
@@ -56,7 +57,7 @@ impl Solver {
                                 let live_solvers_clone = live_solvers.clone();
                                 move || {
                                     let count = live_solvers_clone.fetch_add(1, Ordering::Relaxed);
-                                    ConsoleService::info(format!("Solver Thread #{count}").as_ref());
+                                    info!(format!("Solver Thread #{count}"));
                                     let solver = SolverBoard::from_board(thread_board);
                                     thread_sender.send(solver.solve()).unwrap();
                                     live_solvers_clone.fetch_sub(1, Ordering::Relaxed);
@@ -179,7 +180,7 @@ fn string_to_state(state: &str, height: usize, length: usize) -> State {
         if i % length == 0 {
             out.push(temp.take());
         } else {
-            temp.push(BoardCell::from_char(cell));
+            temp.push(BoardCell::from_char(cell, i % length, i / length));
         }
     }
     out

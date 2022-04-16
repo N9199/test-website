@@ -87,22 +87,32 @@ impl fmt::Debug for BoardCell {
 }
 
 impl BoardCell {
-    pub fn from_char(c: char,x:usize, y:usize) -> Self {
+    #[inline]
+    pub fn from_char(c: char, x: usize, y: usize) -> Self {
         if c.is_numeric() {
-            Self::from_raw_parts(c.to_digit(10).unwrap() as u8, BoardCellState::Discoveredx,x,y)
+            Self::from_raw_parts(
+                c.to_digit(10).unwrap() as u8,
+                BoardCellState::Discovered,
+                x,
+                y,
+            )
         } else if c == 'm' {
-            Self::from_raw_parts(15, BoardCellState::Blankx,x,y)
+            Self::from_raw_parts(15, BoardCellState::Blank, x, y)
         } else if c == '?' {
-            Self::from_raw_parts(0, BoardCellState::Blankx,x,y)
+            Self::from_raw_parts(0, BoardCellState::Blank, x, y)
         } else {
-            Self::from_raw_parts(0, BoardCellState::Otherx,x,y)
+            Self::from_raw_parts(0, BoardCellState::Other, x, y)
         }
     }
+    #[inline]
     fn from_raw_parts(value: u8, state: BoardCellState, x: usize, y: usize) -> Self {
         Self {
-            cell: ((state as u8) << 4) + value,x,y
+            cell: ((state as u8) << 4) + value,
+            x,
+            y,
         }
     }
+
     pub fn state(&self) -> BoardCellState {
         match self.cell >> 4 {
             0 => BoardCellState::Discovered,
@@ -113,6 +123,10 @@ impl BoardCell {
             _ => BoardCellState::Other,
         }
     }
+    fn flags(&self) -> u8 {
+        self.cell >> 4
+    }
+
     pub fn value(&self) -> u8 {
         self.cell & ((1 << 4) - 1)
     }
@@ -163,12 +177,6 @@ impl BoardCell {
         html! {
             <td class={s} onclick={left_click} oncontextmenu={right_click} ontouchstart={tap_start} ontouchend={tap_end} onselectstart={prevent_select.clone()} onselect={prevent_select.clone()}>{format!("{}", self)}</td>
         }
-    }
-}
-
-impl Default for BoardCell {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -295,7 +303,7 @@ impl Board {
                 }
             }
         }
-        ConsoleService::debug("Finish Board Filling");
+        debug!("Finish Board Filling");
 
         self.solver = Solver::from_board(&self.board).into();
         self.solver.as_mut().unwrap().start();
