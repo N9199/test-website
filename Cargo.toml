@@ -16,3 +16,7 @@ rand = "0.8.4"
 itertools = "0.10.1"
 wasm-timer = "0.2.5"
 strum = { version = "0.23", features = ["derive"] }
+arrayvec = "0.7.2"
+lazy_static = "1.4.0"
+nalgebra = "0.30.1"
+rayon = "1.5.2"

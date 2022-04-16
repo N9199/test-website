@@ -7,6 +7,7 @@ use std::ops::Deref;
 
 mod new_game_menu;
 mod board;
+mod solver;
 use board::AppRender as AppRender;
 
 pub struct WeakComponentLink<COMP: Component>(Rc<RefCell<Option<Scope<COMP>>>>);

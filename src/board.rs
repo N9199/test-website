@@ -1,4 +1,5 @@
 use crate::new_game_menu::{NewGameMenu, NewGameMenuMsg};
+use crate::solver::Solver;
 
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
@@ -21,26 +22,55 @@ enum GameState {
     Lost,
 }
 
-#[derive(Clone, PartialEq)]
-struct BoardCell {
-    pub cell: u8,
-    x: usize,
-    y: usize,
+#[derive(Debug, PartialEq, Eq)]
+pub enum BoardCellState {
+    Discovered = 0,
+    Blank = 1,
+    Flagged = 2,
+    Question = 3,
+    Exploded = 4,
+    Other,
+}
+
+#[derive(Clone, Eq)]
+pub struct BoardCell {
+    cell: u8,
+}
+
+impl PartialEq for BoardCell {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.state(), other.state()) {
+            (BoardCellState::Discovered, BoardCellState::Discovered) => {
+                self.value() == other.value()
+            }
+            (BoardCellState::Blank, BoardCellState::Blank) => true,
+            (BoardCellState::Blank, BoardCellState::Flagged) => true,
+            (BoardCellState::Blank, BoardCellState::Question) => true,
+            (BoardCellState::Flagged, BoardCellState::Blank) => true,
+            (BoardCellState::Flagged, BoardCellState::Flagged) => true,
+            (BoardCellState::Flagged, BoardCellState::Question) => true,
+            (BoardCellState::Question, BoardCellState::Blank) => true,
+            (BoardCellState::Question, BoardCellState::Flagged) => true,
+            (BoardCellState::Question, BoardCellState::Question) => true,
+            (_, _) => false,
+        }
+    }
 }
 
 impl fmt::Display for BoardCell {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let out = match self.flags() {
-            3 => String::from("?"),
-            2 => String::from("f"),
-            1 => String::from(" "),
-            0 => match self.value() {
+        let out = match self.state() {
+            BoardCellState::Question => String::from("?"),
+            BoardCellState::Flagged => String::from("f"),
+            BoardCellState::Blank => String::from(" "),
+            BoardCellState::Discovered => match self.value() {
                 1..=8 => self.value().to_string(),
                 15 => String::from("m"),
                 0 => String::from(" "),
                 _ => String::from(" "),
             },
-            _ => String::from("e"),
+            BoardCellState::Exploded => String::from("e"),
+            BoardCellState::Other => String::from("e"),
         };
         write!(f, "{}", out)
     }
@@ -48,27 +78,47 @@ impl fmt::Display for BoardCell {
 
 impl fmt::Debug for BoardCell {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let out = format!(
-            "{:?}: ({}, {})",
-            (self.x, self.y),
-            self.value(),
-            self.flags()
-        );
+        let out = format!("({}, {:?})", self.value(), self.state());
         write!(f, "{}", out)
     }
 }
 
 impl BoardCell {
-    fn flags(&self) -> u8 {
-        self.cell >> 4
+    pub fn from_char(c: char) -> Self {
+        if c.is_numeric() {
+            Self::from_raw_parts(c.to_digit(10).unwrap() as u8, BoardCellState::Discovered)
+        } else if c == 'm' {
+            Self::from_raw_parts(15, BoardCellState::Blank)
+        } else if c == '?' {
+            Self::from_raw_parts(0, BoardCellState::Blank)
+        } else {
+            Self::from_raw_parts(0, BoardCellState::Other)
+        }
     }
-    fn value(&self) -> u8 {
+    fn from_raw_parts(value: u8, state: BoardCellState) -> Self {
+        Self {
+            cell: ((state as u8) << 4) + value,
+        }
+    }
+    pub fn new() -> Self {
+        Self { cell: 1 << 4 }
+    }
+    pub fn state(&self) -> BoardCellState {
+        match self.cell >> 4 {
+            0 => BoardCellState::Discovered,
+            1 => BoardCellState::Blank,
+            2 => BoardCellState::Flagged,
+            3 => BoardCellState::Question,
+            4 => BoardCellState::Exploded,
+            _ => BoardCellState::Other,
+        }
+    }
+    pub fn value(&self) -> u8 {
         self.cell & ((1 << 4) - 1)
     }
-    fn click(&mut self) -> bool {
-        if self.flags() == 1 {
+    pub fn click(&mut self) -> bool {
+        if self.state() == BoardCellState::Blank {
             self.cell = self.value();
-            //ConsoleService::info(format!("{:?}", self).as_ref());
             if self.value() == 0 {
                 return true;
             }
@@ -76,19 +126,18 @@ impl BoardCell {
         false
     }
 
-    fn flag(&mut self) -> i8 {
-        if self.flags() != 0 {
-            self.cell = self.value() + ((self.flags() % 3 + 1) << 4);
+    pub fn flag(&mut self) -> i8 {
+        if self.state() != BoardCellState::Discovered {
+            self.cell = self.value() + (((self.state() as u8) % 3 + 1) << 4);
         }
-        match self.flags() {
-            3 => -1,
-            2 => 1,
+        match self.state() {
+            BoardCellState::Question => -1,
+            BoardCellState::Flagged => 1,
             _ => 0,
         }
     }
 
-    fn render(&self, link: &ComponentLink<AppRender>) -> Html {
-        let (x, y) = (self.x, self.y);
+    fn render(&self, link: &ComponentLink<AppRender>, x: usize, y: usize) -> Html {
         let left_click = link.callback(move |_| AppRenderMsg::Clicked(x, y, true));
         let right_click = link.callback(move |e: MouseEvent| {
             e.prevent_default();
@@ -99,23 +148,29 @@ impl BoardCell {
             e.prevent_default();
             AppRenderMsg::TapEnd(x, y)
         });
-        let prevent_select = link.callback( |e: Event| {
+        let prevent_select = link.callback(|e: Event| {
             e.prevent_default();
             AppRenderMsg::Nothing
         });
-        let s = match self.flags() {
-            0 => "cell1",
-            4 => "cell1",
-            1 => "cell0",
+        let s = match self.state() {
+            BoardCellState::Discovered => "cell1",
+            BoardCellState::Exploded => "cell1",
+            BoardCellState::Blank => "cell0",
             _ => "cell0",
         };
         html! {
-            <td class={s} onclick=left_click oncontextmenu=right_click ontouchstart=tap_start ontouchend=tap_end onselectstart=prevent_select.clone() onselect=prevent_select.clone()>{format!("{}", self)}</td>
+            <td class={s} onclick=left_click oncontextmenu=right_click ontouchstart=tap_start ontouchend=tap_end onselectstart=prevent_select onselect=prevent_select.clone()>{format!("{}", self)}</td>
         }
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+impl Default for BoardCell {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug)]
 struct Board {
     board: Vec<Vec<BoardCell>>,
     pub rows: usize,
@@ -128,21 +183,14 @@ struct Board {
     start_time: Option<Instant>,
     display_time: u16,
     flag: bool,
+    solver: Option<Solver>,
 }
 
 impl Board {
     fn new(rows: usize, cols: usize, mines: usize) -> Self {
         Board {
             board: (0..rows)
-                .map(|x| {
-                    (0..cols)
-                        .map(|y| BoardCell {
-                            cell: (1 << 4),
-                            x,
-                            y,
-                        })
-                        .collect()
-                })
+                .map(|_| (0..cols).map(|_| BoardCell::default()).collect())
                 .collect(),
             rows,
             cols,
@@ -154,6 +202,7 @@ impl Board {
             start_time: None,
             display_time: 0,
             flag: false,
+            solver: None,
         }
     }
 
@@ -217,7 +266,7 @@ impl Board {
         //ConsoleService::info(format!("pos:{:?}", pos).as_ref());
         ConsoleService::debug("Place Mines");
         for (x, y) in pos {
-            self.board[x][y].cell = 15 + (self.board[x][y].flags() << 4);
+            self.board[x][y].cell = 15 + ((self.board[x][y].state() as u8) << 4);
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                 let x1 = x as i32 + dx;
                 let y1 = y as i32 + dy;
@@ -231,13 +280,16 @@ impl Board {
                 }
             }
         }
+        ConsoleService::debug("Finish Board Filling");
+
+        self.solver = Solver::from_board(&self.board).into();
+        self.solver.as_mut().unwrap().start();
         self.start = true;
         self.start_time = Some(Instant::now());
-        ConsoleService::debug("Finish Board Filling");
     }
 
     fn flag(&mut self, x: usize, y: usize) {
-        if self.board[x][y].flags() == 0 {
+        if self.board[x][y].state() == BoardCellState::Discovered {
             self.click(x, y);
         }
         if !self.start {
@@ -254,7 +306,7 @@ impl Board {
         let mut q = VecDeque::new();
         let mut set = HashSet::new();
         ConsoleService::debug("Check if flagged");
-        if self.board[x][y].flags() == 0 {
+        if self.board[x][y].state() == BoardCellState::Discovered {
             let mut count = 0;
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
                 let x1 = x as i32 + dx;
@@ -262,7 +314,7 @@ impl Board {
                 if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                     let x1 = x1 as usize;
                     let y1 = y1 as usize;
-                    if self.board[x1][y1].flags() == 2 {
+                    if self.board[x1][y1].state() == BoardCellState::Flagged {
                         count += 1;
                     }
                 }
@@ -274,7 +326,7 @@ impl Board {
                     if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                         let x1 = x1 as usize;
                         let y1 = y1 as usize;
-                        if self.board[x1][y1].flags() == 1 {
+                        if self.board[x1][y1].state() == BoardCellState::Blank {
                             q.push_back((x1, y1));
                             set.insert((x1, y1));
                         }
@@ -283,7 +335,7 @@ impl Board {
             }
         }
         ConsoleService::debug("Check if clickable");
-        if self.board[x][y].flags() == 1 {
+        if self.board[x][y].state() == BoardCellState::Blank {
             q.push_back((x, y));
             set.insert((x, y));
         }
@@ -297,7 +349,7 @@ impl Board {
                 self.board[x][y].cell = 15 + (4 << 4);
                 return;
             }
-            if self.board[x][y].flags() == 1 {
+            if self.board[x][y].state() == BoardCellState::Blank {
                 self.clicked_cells += 1;
             }
             if self.board[x][y].click() {
@@ -307,7 +359,9 @@ impl Board {
                     if 0 <= x1 && x1 < self.rows as i32 && 0 <= y1 && y1 < self.cols as i32 {
                         let x1 = x1 as usize;
                         let y1 = y1 as usize;
-                        if self.board[x1][y1].flags() == 1 && !set.contains(&(x1, y1)) {
+                        if self.board[x1][y1].state() == BoardCellState::Blank
+                            && !set.contains(&(x1, y1))
+                        {
                             q.push_back((x1, y1));
                             set.insert((x1, y1));
                         }
@@ -343,8 +397,8 @@ impl Board {
                     if self.board[x][y].value() != 15 {
                         self.board[x][y].click();
                     } else if self.game_state == GameState::Won {
-                        self.board[x][y].cell = 15 + (2 << 4);
-                    } else if self.board[x][y].flags() != 4 {
+                        self.board[x][y].cell = 15 + ((BoardCellState::Flagged as u8) << 4);
+                    } else if self.board[x][y].state() != BoardCellState::Exploded {
                         self.board[x][y].cell = 15;
                     }
                 }
@@ -504,12 +558,14 @@ fn board_display(board: &Vec<Vec<BoardCell>>, link: &ComponentLink<AppRender>) -
     html! {
        board
             .iter()
-            .map(|row| {
+            .enumerate()
+            .map(|(row_index,row)| {
                 html! {
                     <tr>
                     {row
                         .iter()
-                        .map(|cell| cell.render(link))
+                        .enumerate()
+                        .map(|(column_index, cell)| cell.render(link, row_index, column_index))
                         .collect::<Html>()}
                     </tr>
                 }
