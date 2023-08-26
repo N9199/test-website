@@ -9,7 +9,7 @@ use itertools::iproduct;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use yew::services::interval::{IntervalService, IntervalTask};
-use yew::services::{ConsoleService, Task};
+use yew::services::ConsoleService;
 use yew::{html, Component, ComponentLink, Event, Html, MouseEvent, ShouldRender, TouchEvent};
 
 use wasm_timer::Instant;
@@ -99,7 +99,7 @@ impl BoardCell {
             e.prevent_default();
             AppRenderMsg::TapEnd(x, y)
         });
-        let prevent_select = link.callback( |e: Event| {
+        let prevent_select = link.callback(|e: Event| {
             e.prevent_default();
             AppRenderMsg::Nothing
         });

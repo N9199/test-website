@@ -5,7 +5,6 @@ use std::rc::{Rc, Weak};
 
 use strum::{EnumIter, IntoEnumIterator};
 use yew::html::ChangeData;
-use yew::services::ConsoleService;
 use yew::{html, Component, ComponentLink, Html, Properties, ShouldRender};
 
 pub enum NewGameMenuMsg {
