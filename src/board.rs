@@ -10,7 +10,7 @@ use itertools::iproduct;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use yew::services::interval::{IntervalService, IntervalTask};
-use yew::services::{ConsoleService, Task};
+use yew::services::ConsoleService;
 use yew::{html, Component, ComponentLink, Event, Html, MouseEvent, ShouldRender, TouchEvent};
 
 use wasm_timer::Instant;
