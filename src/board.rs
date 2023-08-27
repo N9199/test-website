@@ -6,12 +6,13 @@ use std::fmt;
 use std::rc::Rc;
 use std::time::Duration;
 
+use gloo_console::{debug, info};
+use gloo_timers::callback::Interval;
 use itertools::iproduct;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use yew::services::interval::{IntervalService, IntervalTask};
-use yew::services::ConsoleService;
-use yew::{html, Component, ComponentLink, Event, Html, MouseEvent, ShouldRender, TouchEvent};
+use yew::html::Scope;
+use yew::{html, Component, Context, Event, Html, MouseEvent, TouchEvent};
 
 use wasm_timer::Instant;
 
@@ -35,6 +36,8 @@ pub enum BoardCellState {
 #[derive(Clone, Eq)]
 pub struct BoardCell {
     cell: u8,
+    x: usize,
+    y: usize,
 }
 
 impl PartialEq for BoardCell {
@@ -84,24 +87,21 @@ impl fmt::Debug for BoardCell {
 }
 
 impl BoardCell {
-    pub fn from_char(c: char) -> Self {
+    pub fn from_char(c: char,x:usize, y:usize) -> Self {
         if c.is_numeric() {
-            Self::from_raw_parts(c.to_digit(10).unwrap() as u8, BoardCellState::Discovered)
+            Self::from_raw_parts(c.to_digit(10).unwrap() as u8, BoardCellState::Discoveredx,x,y)
         } else if c == 'm' {
-            Self::from_raw_parts(15, BoardCellState::Blank)
+            Self::from_raw_parts(15, BoardCellState::Blankx,x,y)
         } else if c == '?' {
-            Self::from_raw_parts(0, BoardCellState::Blank)
+            Self::from_raw_parts(0, BoardCellState::Blankx,x,y)
         } else {
-            Self::from_raw_parts(0, BoardCellState::Other)
+            Self::from_raw_parts(0, BoardCellState::Otherx,x,y)
         }
     }
-    fn from_raw_parts(value: u8, state: BoardCellState) -> Self {
+    fn from_raw_parts(value: u8, state: BoardCellState, x: usize, y: usize) -> Self {
         Self {
-            cell: ((state as u8) << 4) + value,
+            cell: ((state as u8) << 4) + value,x,y
         }
-    }
-    pub fn new() -> Self {
-        Self { cell: 1 << 4 }
     }
     pub fn state(&self) -> BoardCellState {
         match self.cell >> 4 {
@@ -119,6 +119,7 @@ impl BoardCell {
     pub fn click(&mut self) -> bool {
         if self.state() == BoardCellState::Blank {
             self.cell = self.value();
+            //info!(format!("{:?}", self));
             if self.value() == 0 {
                 return true;
             }
@@ -137,7 +138,8 @@ impl BoardCell {
         }
     }
 
-    fn render(&self, link: &ComponentLink<AppRender>, x: usize, y: usize) -> Html {
+    fn render(&self, link: &Scope<AppRender>) -> Html {
+        let (x, y) = (self.x, self.y);
         let left_click = link.callback(move |_| AppRenderMsg::Clicked(x, y, true));
         let right_click = link.callback(move |e: MouseEvent| {
             e.prevent_default();
@@ -159,7 +161,7 @@ impl BoardCell {
             _ => "cell0",
         };
         html! {
-            <td class={s} onclick=left_click oncontextmenu=right_click ontouchstart=tap_start ontouchend=tap_end onselectstart=prevent_select onselect=prevent_select.clone()>{format!("{}", self)}</td>
+            <td class={s} onclick={left_click} oncontextmenu={right_click} ontouchstart={tap_start} ontouchend={tap_end} onselectstart={prevent_select.clone()} onselect={prevent_select.clone()}>{format!("{}", self)}</td>
         }
     }
 }
@@ -173,9 +175,9 @@ impl Default for BoardCell {
 #[derive(Debug)]
 struct Board {
     board: Vec<Vec<BoardCell>>,
-    pub rows: usize,
-    pub cols: usize,
-    pub mines: usize,
+    pub rows: u16,
+    pub cols: u16,
+    pub mines: u16,
     pub game_state: GameState,
     start: bool,
     clicked_cells: usize,
@@ -187,10 +189,18 @@ struct Board {
 }
 
 impl Board {
-    fn new(rows: usize, cols: usize, mines: usize) -> Self {
+    fn new(rows: u16, cols: u16, mines: u16) -> Self {
         Board {
-            board: (0..rows)
-                .map(|_| (0..cols).map(|_| BoardCell::default()).collect())
+            board: (0..rows as _)
+                .map(|x| {
+                    (0..cols as _)
+                        .map(|y| BoardCell {
+                            cell: (1 << 4),
+                            x,
+                            y,
+                        })
+                        .collect()
+                })
                 .collect(),
             rows,
             cols,
@@ -208,10 +218,10 @@ impl Board {
 
     fn start(&mut self, x: usize, y: usize, flag: bool) {
         //populate board
-        ConsoleService::debug("Fill Board");
+        debug!("Fill Board");
         let mut rng = thread_rng();
-        let _place = x * self.cols + y;
-        ConsoleService::debug("Create Mines");
+        let _place = x * (self.cols as usize) + y;
+        debug!("Create Mines");
         let mut places = iproduct!(-1..=1, -1..=1)
             .map(|(dx, dy)| (x as i32 + dx, y as i32 + dy))
             .filter(|(x, y)| 0 <= *x && *x < self.rows as i32 && 0 <= *y && *y < self.cols as i32)
@@ -220,13 +230,17 @@ impl Board {
         places.sort_unstable();
         let places = {
             let mut temp: Vec<(usize, usize)> = vec![(0, 0)];
-            let (mut start, mut len, mut next) = (self.rows * self.cols, 0, self.rows * self.cols);
+            let (mut start, mut len, mut next) = (
+                (self.rows * self.cols) as _,
+                0,
+                (self.rows * self.cols) as _,
+            );
             for e in places {
                 if e == next {
                     len += 1;
                     next += 1;
                 } else {
-                    if start != self.rows * self.cols {
+                    if start != (self.rows * self.cols) as usize {
                         temp.push((start, len));
                     }
                     start = e;
@@ -235,13 +249,14 @@ impl Board {
                 }
             }
             temp.push((start, len));
-            temp.push((self.cols * self.rows, 0));
+            temp.push(((self.cols * self.rows) as _, 0));
             temp
         };
-        //ConsoleService::info(format!("{:?}", places).as_ref());
-        let mut pos = (0..(self.rows * self.cols - places.iter().fold(0, |acc, (_, x)| acc + x))) //Counting is hard
+        //info!(format!("{:?}", places));
+        let mut pos = (0..((self.rows * self.cols) as usize
+            - places.iter().fold(0, |acc, (_, x)| acc + x))) //Counting is hard
             .collect::<Vec<usize>>()
-            .choose_multiple(&mut rng, self.mines)
+            .choose_multiple(&mut rng, self.mines as _)
             .copied()
             .collect::<Vec<usize>>();
         pos.sort_unstable();
@@ -254,17 +269,17 @@ impl Board {
                     delta += places[i].1;
                     i += 1;
                 }
-                //ConsoleService::info(format!("{} {} {}", a, delta, i).as_ref());
+                //info!(format!("{} {} {}", a, delta, i));
                 (*a) + delta * (flag as usize)
             })
             .map(|a| {
-                //ConsoleService::info(format!("a:{} x:{}", a, a/self.m).as_ref());
-                (a / self.cols, a % self.cols)
+                //info!(format!("a:{} x:{}", a, a/self.m));
+                (a / (self.cols as usize), a % (self.cols as usize))
             })
             .collect::<Vec<(usize, usize)>>();
-        //ConsoleService::info(format!("self.m:{}", self.m).as_ref());
-        //ConsoleService::info(format!("pos:{:?}", pos).as_ref());
-        ConsoleService::debug("Place Mines");
+        //info!(format!("self.m:{}", self.m));
+        //info!(format!("pos:{:?}", pos));
+        debug!("Place Mines");
         for (x, y) in pos {
             self.board[x][y].cell = 15 + ((self.board[x][y].state() as u8) << 4);
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
@@ -275,7 +290,7 @@ impl Board {
                     let y1 = y1 as usize;
                     if self.board[x1][y1].value() != 15 {
                         self.board[x1][y1].cell += 1;
-                        //ConsoleService::info(format!("({},{}): {}", x1, y1, self.board[x1][y1].flags()).as_ref(),);
+                        //info!(format!("({},{}): {}", x1, y1, self.board[x1][y1].flags()),);
                     }
                 }
             }
@@ -286,6 +301,7 @@ impl Board {
         self.solver.as_mut().unwrap().start();
         self.start = true;
         self.start_time = Some(Instant::now());
+        debug!("Finish Board Filling");
     }
 
     fn flag(&mut self, x: usize, y: usize) {
@@ -299,13 +315,13 @@ impl Board {
     }
 
     fn click(&mut self, x: usize, y: usize) {
-        ConsoleService::debug("Clicked");
+        debug!("Clicked");
         if !self.start {
             self.start(x, y, true);
         }
         let mut q = VecDeque::new();
         let mut set = HashSet::new();
-        ConsoleService::debug("Check if flagged");
+        debug!("Check if flagged");
         if self.board[x][y].state() == BoardCellState::Discovered {
             let mut count = 0;
             for (dx, dy) in iproduct!(-1..=1, -1..=1) {
@@ -334,12 +350,12 @@ impl Board {
                 }
             }
         }
-        ConsoleService::debug("Check if clickable");
-        if self.board[x][y].state() == BoardCellState::Blank {
+        debug!("Check if clickable");
+        if self.board[x][y].flags() == 1 {
             q.push_back((x, y));
             set.insert((x, y));
         }
-        ConsoleService::debug("Check all discovered values");
+        debug!("Check all discovered values");
         //Maybe optimize in future
         while let Some((x, y)) = q.pop_front() {
             //BFS
@@ -369,11 +385,11 @@ impl Board {
                 }
             }
         }
-        ConsoleService::debug("Check if game is won");
-        if self.clicked_cells + self.mines == self.cols * self.rows {
+        debug!("Check if game is won");
+        if self.clicked_cells + (self.mines as usize) == (self.cols * self.rows) as usize {
             self.game_state = GameState::Won;
         }
-        ConsoleService::debug("Finish Click");
+        debug!("Finish Click");
     }
 
     fn time(&self) -> u16 {
@@ -392,8 +408,8 @@ impl Board {
     fn update(&mut self) {
         self.display_time = self.time();
         if self.game_state != GameState::InProgress {
-            for x in 0..self.rows {
-                for y in 0..self.cols {
+            for x in 0..self.rows as _ {
+                for y in 0..self.cols as _ {
                     if self.board[x][y].value() != 15 {
                         self.board[x][y].click();
                     } else if self.game_state == GameState::Won {
@@ -415,12 +431,12 @@ impl Default for Board {
 
 #[derive(Debug)]
 pub enum AppRenderMsg {
-    Clicked(usize, usize, bool),     //(x,y,is_left)
-    Difficulty(usize, usize, usize), //cols, rows, mines
+    Clicked(usize, usize, bool), //(x,y,is_left)
+    Difficulty(u16, u16, u16),   //cols, rows, mines
     NewGame,
     Menu,
     ToggleFlag,
-    MenuLink(Rc<ComponentLink<NewGameMenu>>),
+    MenuLink(Scope<NewGameMenu>),
     UpdateTime,
     TapStart(usize, usize),
     TapEnd(usize, usize),
@@ -428,25 +444,23 @@ pub enum AppRenderMsg {
 }
 
 pub struct AppRender {
-    link: Rc<ComponentLink<Self>>,
     board: Board,
-    new_game_menu: Option<Rc<ComponentLink<NewGameMenu>>>,
+    new_game_menu: Option<Scope<NewGameMenu>>,
     new_game_menu_visible: bool,
     last_tap: (usize, usize, Option<Instant>),
-    _clock_updater: IntervalTask,
+    _clock_updater: Interval,
 }
 
 impl Component for AppRender {
     type Message = AppRenderMsg;
     type Properties = ();
 
-    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let clock_handle = IntervalService::spawn(
-            Duration::from_millis(500),
-            link.callback(|_| AppRenderMsg::UpdateTime),
-        );
+    fn create(ctx: &Context<Self>) -> Self {
+        let clock_handle = {
+            let link = ctx.link().clone();
+            Interval::new(500, move || link.send_message(AppRenderMsg::UpdateTime))
+        };
         Self {
-            link: Rc::new(link),
             board: Board::default(),
             new_game_menu: None,
             new_game_menu_visible: false,
@@ -454,18 +468,15 @@ impl Component for AppRender {
             _clock_updater: clock_handle,
         }
     }
-    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        true
-    }
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         let debug_msg = format!("{:?}", msg);
         let time = if let Some(start_time) = self.board.start_time {
             Instant::now() - start_time
         } else {
             Duration::ZERO
         };
-        ConsoleService::debug(format!("Starting: {} ({})", debug_msg, time.as_millis()).as_ref());
-
+        debug!(format!("Starting: {} ({})", debug_msg, time.as_millis()));
         match (msg, self.board.game_state, self.new_game_menu_visible) {
             (AppRenderMsg::Clicked(x, y, flag), GameState::InProgress, false) => {
                 match flag ^ self.board.flag {
@@ -474,9 +485,8 @@ impl Component for AppRender {
                 }
             }
             (AppRenderMsg::NewGame, _, _) => {
-                if let Some(menu) = &self.new_game_menu {
-                    let toggle_menu = menu.callback(|_| NewGameMenuMsg::ToggleVisibility);
-                    toggle_menu.emit("");
+                if let Some(menu) = self.new_game_menu.as_ref() {
+                    menu.send_message(NewGameMenuMsg::ToggleVisibility);
                 }
                 self.new_game_menu_visible = true;
             }
@@ -505,14 +515,15 @@ impl Component for AppRender {
             (_, _, _) => (),
         };
         self.board.update();
-        ConsoleService::debug(format!("Finished: {} ({})", debug_msg, time.as_millis()).as_ref());
+        debug!(format!("Finished: {} ({})", debug_msg, time.as_millis()));
         true
     }
 
-    fn view(&self) -> Html {
-        let restart = self.link.callback(move |_| AppRenderMsg::NewGame);
-        let toggle_flag = self.link.callback(move |_| AppRenderMsg::ToggleFlag);
-        let menu = self.link.callback(move |_| AppRenderMsg::Menu);
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let restart = link.callback(move |_| AppRenderMsg::NewGame);
+        let toggle_flag = link.callback(move |_| AppRenderMsg::ToggleFlag);
+        let menu = link.callback(move |_| AppRenderMsg::Menu);
         let restart_button = match self.board.game_state {
             GameState::InProgress => "R",
             GameState::Won => ":)",
@@ -523,26 +534,26 @@ impl Component for AppRender {
             <div style={"position: absolute; top: 10%"}>
                 <div class={"title_bar"} style={format!("min-width: {}px",self.board.cols*32+2)}>
                     <div class={"item"}>
-                        <div class={"button"} onclick=toggle_flag>{"T"}</div>
+                        <div class={"button"} onclick={toggle_flag}>{"T"}</div>
                     </div>
                     <div class={"item"} style={"display: flex; flex-direction: row;"}>
                         {display(self.board.mines as i16 - self.board.flagged_mines)}
-                        <div class={"button"} onclick=restart>{restart_button}</div>
+                        <div class={"button"} onclick={restart}>{restart_button}</div>
                         {display(self.board.time() as i16)}
                     </div>
                     <div class={"item"}>
-                        <div class={"button"} onclick=menu>{"S"}</div>
+                        <div class={"button"} onclick={menu}>{"S"}</div>
                     </div>
                 </div>
                 <div>
                     <table class={"board"}>
                         <tbody>
-                        {board_display(&self.board.board, &self.link)}
+                        {board_display(&self.board.board, link)}
                         </tbody>
                     </table>
                 </div>
             </div>
-            <NewGameMenu par_link=Rc::downgrade(&self.link)/>
+            <NewGameMenu/>
             </>
         }
     }
@@ -554,7 +565,7 @@ fn display(number: i16) -> Html {
     }
 }
 
-fn board_display(board: &Vec<Vec<BoardCell>>, link: &ComponentLink<AppRender>) -> Html {
+fn board_display(board: &Vec<Vec<BoardCell>>, link: &Scope<AppRender>) -> Html {
     html! {
        board
             .iter()
@@ -565,7 +576,7 @@ fn board_display(board: &Vec<Vec<BoardCell>>, link: &ComponentLink<AppRender>) -
                     {row
                         .iter()
                         .enumerate()
-                        .map(|(column_index, cell)| cell.render(link, row_index, column_index))
+                        .map(|(column_index, cell)| cell.render(link))
                         .collect::<Html>()}
                     </tr>
                 }
