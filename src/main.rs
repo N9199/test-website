@@ -1,4 +1,4 @@
-use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use yew::{Component, Html, html, Context};
 use yew::html::{ImplicitClone, Scope};
 
 use std::rc::Rc;
@@ -40,32 +40,24 @@ impl<COMP: Component> PartialEq for WeakComponentLink<COMP> {
 
 
 struct Model {
-    _link: ComponentLink<Self>,
 }
 
 impl Component for Model {
     type Message = ();
     type Properties = ();
 
-    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        Self { _link: link }
+    fn create(ctx: &Context<Self>) -> Self {
+        Model{}
     }
 
-    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
-        true
-    }
-
-    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        false
-    }
-
-    fn view(&self) -> Html {
+    fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <>
                 <AppRender />
             </>
         }
     }
+
 }
 
 fn main() {
