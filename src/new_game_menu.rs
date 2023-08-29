@@ -74,7 +74,7 @@ impl Component for NewGameMenu {
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             NewGameMenuMsg::ToggleVisibility => {
                 self.visible ^= true;
@@ -121,48 +121,52 @@ impl Component for NewGameMenu {
                 AppRenderMsg::Difficulty(rows, cols, mines)
             });
         let rows_change = link.callback(|e: Event| match (e.type_().as_ref(), e.target()) {
-            ("change", Some(target)) => {
-                match Reflect::get(&target, &JsValue::from_str("value")) {
-                    Ok(value) => {
-                        log!(&value);
-                        NewGameMenuMsg::Rows(
-                            value.as_string().expect("value should exist").parse().expect("value should be number")
-                        )
-                    }
-                    Err(_) => NewGameMenuMsg::Rows(1),
+            ("change", Some(target)) => match Reflect::get(&target, &JsValue::from_str("value")) {
+                Ok(value) => {
+                    log!(&value);
+                    NewGameMenuMsg::Rows(
+                        value
+                            .as_string()
+                            .expect("value should exist")
+                            .parse()
+                            .expect("value should be number"),
+                    )
                 }
-            }
+                Err(_) => NewGameMenuMsg::Rows(1),
+            },
             (_, _) => NewGameMenuMsg::Rows(1),
         });
         let cols_change = link.callback(|e: Event| match (e.type_().as_ref(), e.target()) {
-            ("change", Some(target)) => {
-                match Reflect::get(&target, &JsValue::from_str("value")) {
-                    Ok(value) => {
-                        log!(&value);
-                        NewGameMenuMsg::Cols(
-                            value.as_string().expect("value should exist").parse().expect("value should be number")
-                        )
-                    }
-                    Err(_) => NewGameMenuMsg::Cols(1),
+            ("change", Some(target)) => match Reflect::get(&target, &JsValue::from_str("value")) {
+                Ok(value) => {
+                    log!(&value);
+                    NewGameMenuMsg::Cols(
+                        value
+                            .as_string()
+                            .expect("value should exist")
+                            .parse()
+                            .expect("value should be number"),
+                    )
                 }
-            }
+                Err(_) => NewGameMenuMsg::Cols(1),
+            },
             (_, _) => NewGameMenuMsg::Cols(1),
         });
-        let mines_change = link.callback(|e: Event| {
-            match (e.type_().as_ref(), e.target()) {
-                ("change", Some(target)) => {
-                    match Reflect::get(&target, &JsValue::from_str("value")) {
-                        Ok(value) => {
-                            log!(&value);
-                            NewGameMenuMsg::Mines(
-                                value.as_string().expect("value should exist").parse().expect("value should be number")
-                            )
-                        }
-                        Err(_) => NewGameMenuMsg::Mines(1),
-                    }
+        let mines_change = link.callback(|e: Event| match (e.type_().as_ref(), e.target()) {
+            ("change", Some(target)) => match Reflect::get(&target, &JsValue::from_str("value")) {
+                Ok(value) => {
+                    log!(&value);
+                    NewGameMenuMsg::Mines(
+                        value
+                            .as_string()
+                            .expect("value should exist")
+                            .parse()
+                            .expect("value should be number"),
+                    )
                 }
-                (_, _) => NewGameMenuMsg::Mines(1),
-            }
+                Err(_) => NewGameMenuMsg::Mines(1),
+            },
+            (_, _) => NewGameMenuMsg::Mines(1),
         });
         html! {
             <div class={"menu"} style={format!("display: {}", display)}>

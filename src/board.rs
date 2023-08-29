@@ -2,10 +2,9 @@ use crate::new_game_menu::{NewGameMenu, NewGameMenuMsg};
 
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
-use std::rc::Rc;
 use std::time::Duration;
 
-use gloo_console::{debug, info};
+use gloo_console::debug;
 use gloo_timers::callback::Interval;
 use itertools::iproduct;
 use rand::seq::SliceRandom;
@@ -405,7 +404,7 @@ impl Component for AppRender {
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         let debug_msg = format!("{:?}", msg);
         let time = if let Some(start_time) = self.board.start_time {
             Instant::now() - start_time
@@ -501,7 +500,7 @@ fn display(number: i16) -> Html {
     }
 }
 
-fn board_display(board: &Vec<Vec<BoardCell>>, link: &Scope<AppRender>) -> Html {
+fn board_display(board: &[Vec<BoardCell>], link: &Scope<AppRender>) -> Html {
     html! {
        board
             .iter()
