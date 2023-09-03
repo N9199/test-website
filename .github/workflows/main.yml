@@ -25,7 +25,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
       - name: Install Rust stable wasm32-unknown-unknown
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
             toolchain: stable
             target: wasm32-unknown-unknown
@@ -55,7 +55,7 @@ jobs:
         uses: EndBug/add-and-commit@v7.4.0
         with:
           add: './docs --force'
-          branch: 'origin deploy --force'
+          branch: origin deploy --force
           author_name: 'github-actions[bot]'
           author_email: 'github-actions[bot]@users.noreply.github.com'
           message: 'Build'
