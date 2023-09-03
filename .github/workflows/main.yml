@@ -55,7 +55,7 @@ jobs:
         uses: EndBug/add-and-commit@v7.4.0
         with:
           add: './docs --force'
-          branch: deploy
+          branch: 'origin deploy --force'
           author_name: 'github-actions[bot]'
           author_email: 'github-actions[bot]@users.noreply.github.com'
           message: 'Build'
