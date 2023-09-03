@@ -54,7 +54,7 @@ jobs:
       - name: Add and Commit
         uses: EndBug/add-and-commit@v7.4.0
         with:
-          add: "['./docs --force', './fonts']"
+          add: "['./docs --force', './fonts --force']"
           push: origin deploy --force
           branch: deploy
           author_name: 'github-actions[bot]'
