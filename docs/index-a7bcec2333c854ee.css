@@ -1,0 +1,134 @@
+@font-face {
+  font-family: 'default-font2';
+  src: url('/fonts/press-start-2p/PressStart2P-vaV7.ttf') format('truetype'),
+  url('/fonts/press-start-2p/PressStart2P-vaV7.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'default-font';
+  src: url('/fonts/MozartNbp-93Ey.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'display-font';
+  src: url('/fonts/alarm-clock/alarm\ clock.ttf') format('truetype')
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-family: 'default-font';
+  font-size: 2em;
+
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  -khtml-user-select:none;
+  -moz-user-select:none;
+  -ms-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:rgba(0,0,0,0);
+}
+
+main {
+  color: #fff6d5;
+  font-family: sans-serif;
+  text-align: center;
+}
+
+h1 + .subtitle {
+  display: block;
+  margin-top: -1em;
+}
+
+.button {
+  border-spacing: 1px;
+  user-select: none;
+  border: 2px outset #ececec;
+  background-color: #c0c0c0;
+  margin: 5px;
+  text-align: center;
+  min-width: 25px;
+}
+
+
+.title_bar {
+  display: flex;
+  justify-content: space-between;
+}
+
+.title_bar .item{
+  flex: 0 0 auto;
+}
+
+.display {
+  color: #42f551;
+  background-color: black;
+  font-family: 'display-font';
+  font-size: 1.5rem;
+  border-spacing: 1px;
+  min-width: 50px;
+  margin: 5px;
+  text-align: center;
+}
+
+.board {
+  border-spacing: 1px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  user-select: none;
+}
+
+.board th {
+  padding: 0.5em;
+}
+
+.board td {
+  border: 2px outset #ececec;
+  width: 30px;
+  height: 30px;
+  text-align: center;
+}
+
+.board .cell0 {
+  background-color: #c0c0c0;
+
+}
+.board .cell1 {
+  background-color: #c0c0c0a9;
+}
+.board .cell2 {
+  background-color: #c0c0c0;
+}
+.board .cell3 {
+  background-color: #c0c0c0;
+}
+
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  font-size: small;
+  position: absolute;
+  top: 10%;
+  border: 3px outset #ececec;
+  background-color: #c0c0c0;
+  min-width: 170px;
+  padding: 5px;
+}
+
+.menu .item{
+  position: relative;
+  border: 3px inset #ececec;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+input[type="range"] {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+}
