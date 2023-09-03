@@ -56,6 +56,7 @@ jobs:
         with:
           add: './docs --force'
           push: origin deploy --force
+          branch: deploy
           author_name: 'github-actions[bot]'
           author_email: 'github-actions[bot]@users.noreply.github.com'
           message: 'Build'
